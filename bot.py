@@ -14,14 +14,12 @@ from aiogram.types import (
 )
 from aiohttp import web
 
-# ---------- НАСТРОЙКИ ----------
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
-GROW_MIN, GROW_MAX = -5, 10      # диапазон ежедневного изменения (см)
-CREDIT_AMOUNT = 10               # сколько дает кредит
-CREDIT_DEBT = 15                 # сколько нужно вернуть
-DEFAULT_BET = 10                 # ставка по умолчанию в дуэли
-PROMOS = {"start": 5, "welcome": 3}  # промокоды
-# --------------------------------
+GROW_MIN, GROW_MAX = -5, 10
+CREDIT_AMOUNT = 10
+CREDIT_DEBT = 15
+DEFAULT_BET = 10
+PROMOS = {"start": 5, "welcome": 3}
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
@@ -68,12 +66,10 @@ def kb(*buttons: tuple[str, str]) -> InlineKeyboardMarkup:
     )
 
 
-# Проверка просрочки кредита (вызывается при действиях игрока)
 def check_credit_timeout(u: sqlite3.Row):
     if u["debt"] > 0 and u["debt_time"]:
         debt_dt = datetime.datetime.fromisoformat(u["debt_time"])
         if datetime.datetime.now() > debt_dt:
-            # Время вышло! Снимаем долг с носа (уменьшаем размер, может уйти в минус)
             new_size = u["size"] - u["debt"]
             db.execute(
                 "UPDATE users SET size=?, debt=0, debt_time=NULL WHERE id=?",
@@ -84,16 +80,12 @@ def check_credit_timeout(u: sqlite3.Row):
     return False
 
 
-# ---------- ЛОГИКА ИГРЫ ----------
 def do_grow(user: types.User) -> str:
     u = get_user(user)
     check_credit_timeout(u)
-    u = get_user(user) # обновляем данные после проверки долга
+    u = get_user(user)
 
     now = datetime.datetime.now()
-    today_str = str(now.date())
-    
-    # Проверка: выращивать можно раз в сутки (24 часа)
     if u["last_grow"]:
         last_grow_dt = datetime.datetime.fromisoformat(u["last_grow"])
         if now - last_grow_dt < datetime.timedelta(days=1):
@@ -103,8 +95,6 @@ def do_grow(user: types.User) -> str:
             return f"{u['name']}, ты уже тянул нос недавно! Следующая попытка через {hours} ч. {minutes} мин."
 
     delta = random.randint(GROW_MIN, GROW_MAX)
-    
-    # Случайные события
     event_text = ""
     event_roll = random.random()
     if event_roll < 0.15:
@@ -122,7 +112,7 @@ def do_grow(user: types.User) -> str:
         debt -= pay
         note = f"\nНа погашение кредита ушло {pay} см, долг: {debt} см"
 
-    size = u["size"] + delta # теперь размер может уходить в минус
+    size = u["size"] + delta
     db.execute(
         "UPDATE users SET size=?, last_grow=?, debt=? WHERE id=?",
         (size, now.isoformat(), debt, user.id),
@@ -139,14 +129,13 @@ def do_credit(user: types.User) -> str:
     if u["debt"] > 0:
         return f"{u['name']}, у тебя уже есть активный долг: {u['debt']} см!"
 
-    # Проверка кулдауна кредита (раз в неделю)
     if u["last_credit_time"]:
         last_cred = datetime.datetime.fromisoformat(u["last_credit_time"])
         if datetime.datetime.now() - last_cred < datetime.timedelta(days=7):
             return f"{u['name']}, брать кредит можно только 1 раз в неделю!"
 
     now = datetime.datetime.now()
-    due_time = now + datetime.timedelta(days=1) # Срок отдать — сутки (24 часа)
+    due_time = now + datetime.timedelta(days=1)
     
     db.execute(
         "UPDATE users SET size=size+?, debt=?, debt_time=?, last_credit_time=? WHERE id=?",
@@ -176,16 +165,16 @@ def do_pay_credit(user: types.User) -> str:
 def do_bankrupt(user: types.User) -> str:
     u = get_user(user)
     if u["size"] >= 0:
-        return f"{u['name']}, банкротство доступно только игрокам с отрицательным балансом (минусом на носу)!"
+        return f"{u['name']}, банкротство доступно только игрокам с отрицательным балансом!"
     if u["bankrupt_used"] == 1:
-        return f"{u['name']}, ты уже использовал банкротство ранее. Второй шанс дают только раз в жизни!"
+        return f"{u['name']}, ты уже использовал банкротство ранее."
 
     db.execute(
         "UPDATE users SET size=0, debt=0, debt_time=NULL, bankrupt_used=1 WHERE id=?",
         (user.id,)
     )
     db.commit()
-    return f"📢 {u['name']} объявил себя банкротом! Долги списаны, а размер носа обнулен до 0 см. Больше так рисковать нельзя!"
+    return f"📢 {u['name']} объявил себя банкротом! Долги списаны, а размер носа обнулен до 0 см."
 
 
 def do_promo(user: types.User, code: str) -> str:
@@ -237,11 +226,11 @@ def stats_text(user: types.User) -> str:
 def rules_text() -> str:
     return (
         "📜 ПРАВИЛА ИГРЫ:\n\n"
-        "1. 👃 **Вырастить нос:** можно раз в сутки (24 часа). Нос может как вырасти, так и уменьшиться (или попасть под погоду).\n"
-        "2. 💳 **Кредит:** дает +10 см, но вернуть нужно 15 см ровно за 24 часа. Если не успеешь — долг автоматически отнимется от твоего носа (можно уйти в минус!). Кредит доступен раз в неделю.\n"
-        "3. 💸 **Вернуть кредит:** можно досрочно через специальную кнопку в меню.\n"
-        "4. 📢 **Банкротство:** если у тебя ушел баланс в минус, ты можешь 1 раз за всю игру объявить банкротство — долг сгорит, а баланс станет 0.\n"
-        "5. 🎯 **Дуэли:** соревнуйся с другими игроками на сантиметры и забирай победы!"
+        "1. 👃 **Вырастить нос:** можно раз в сутки (24 часа).\n"
+        "2. 💳 **Кредит:** дает +10 см, вернуть нужно 15 см за 24 часа.\n"
+        "3. 💸 **Вернуть кредит:** досрочно через кнопку в меню.\n"
+        "4. 📢 **Банкротство:** сброс долгов при отрицательном балансе (1 раз).\n"
+        "5. 🎯 **Дуэли:** соревнуйся с другими игроками на сантиметры."
     )
 
 
@@ -254,7 +243,6 @@ def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultAr
     )
 
 
-# ---------- МИНИМАЛИСТИЧНОЕ ИНЛАЙН-МЕНЮ ----------
 @dp.inline_query()
 async def inline_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -322,7 +310,7 @@ async def on_pay_credit(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("bankrupt:"))
 async def on_bankrupt(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("Это не твоя кнопка", show_alert=True)
+        return await c.answer("This is not your button", show_alert=True)
     await edit(c, do_bankrupt(c.from_user))
     await c.answer()
 
@@ -340,7 +328,6 @@ async def on_promo(c: types.CallbackQuery):
 async def on_duel(c: types.CallbackQuery):
     _, owner, bet = c.data.split(":")
     owner, bet = int(owner), int(bet)
-
     if c.from_user.id == owner:
         return await c.answer("Нельзя принять свой же вызов", show_alert=True)
 
@@ -355,22 +342,17 @@ async def on_duel(c: types.CallbackQuery):
     db.commit()
     await edit(
         c,
-        f"⚔️ Дуэль завершена!\n"
-        f"{a['name']} против {b['name']}\n"
-        f"🏆 Победил {winner['name']} и забрал {bet} см у {loser['name']}!",
+        f"⚔️ Дуэль завершена!\n{a['name']} против {b['name']}\n🏆 Победил {winner['name']} и забрал {bet} см у {loser['name']}!",
     )
     await c.answer()
 
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer(
-        "👋 Привет! Это бот носатых рекордов.\n"
-        "Напиши `@имя_бота` в любом чате, чтобы открыть меню."
-    )
+    await m.answer("👋 Привет! Это бот носатых рекордов.\nНапиши `@имя_бота` в любом чате, чтобы открыть меню.")
 
 
-# Веб-сервер для Render (чтобы веб-сервис не ругался на закрытые порты)
+# Веб-сервер, чтобы Render был доволен открытым портом на бесплатном Web Service
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -386,7 +368,6 @@ async def web_server():
 
 
 async def main():
-    # Запускаем параллельно веб-сервер и самого телеграм-бота
     asyncio.create_task(web_server())
     await dp.start_polling(bot)
 

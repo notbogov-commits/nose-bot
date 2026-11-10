@@ -15,8 +15,8 @@ from aiogram.types import (
 from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
-DEFAULT_BET = 5
-ADMIN_ID = 1642626687  # Твой реальный ID
+DEFAULT_BET = 80  # Ставка по умолчанию теперь 80 коинов
+ADMIN_ID = 1642626687  # Твой ID
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
@@ -33,9 +33,9 @@ db.executescript(
         last_work TEXT,
         wins INTEGER DEFAULT 0,
         losses INTEGER DEFAULT 0,
-        has_title INTEGER DEFAULT 0,
         shield_count INTEGER DEFAULT 0,
-        boost_until TEXT
+        boost_until TEXT,
+        custom_status TEXT
     );
     CREATE TABLE IF NOT EXISTS post_comments (
         post_id INTEGER,
@@ -75,8 +75,8 @@ def add_news(text: str):
 
 
 def get_toxicity_title(u: sqlite3.Row) -> str:
-    if u["has_title"]:
-        return "👑 Властелин комментов (Элитный статус)"
+    if u["custom_status"]:
+        return u["custom_status"]
     coins = u["coins"]
     if coins < 0:
         return "🤡 Главный должник и клоун чата"
@@ -99,20 +99,19 @@ def stats_text(user: types.User) -> str:
     return (
         f"📊 Твоя игровая статистика, {u['name']}\n\n"
         f"🪙 Баланс коинов: {u['coins']}\n"
-        f"🏆 Твой титул: {title}{shield_str}\n"
+        f"🏆 Твой статус: {title}{shield_str}\n"
         f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n\n"
         f"💡 <i>Всё происходит прямо в боте по кнопкам, спамить реальными комментариями в канале не нужно!</i>"
     )
 
 
 def top_text() -> str:
-    rows = db.execute("SELECT name, coins, has_title FROM users ORDER BY coins DESC").fetchall()
+    rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC").fetchall()
     if not rows:
         return "Пока никто не заработал коины"
     lines = []
     for i, r in enumerate(rows):
-        prefix = "👑 " if r["has_title"] else ""
-        lines.append(f"{i + 1}. {prefix}{r['name']} — {r['coins']} коинов")
+        lines.append(f"{i + 1}. {r['name']} — {r['coins']} коинов")
     return "🏆 Общий рейтинг комментаторов:\n" + "\n".join(lines)
 
 
@@ -121,32 +120,7 @@ NEWS_JOKES = [
     "📰 НОВОСТИ КАНАЛА:\n\nСамый душный комментатор недели пытался расплатиться коинами в магазине, но его выгнали за токсичность.",
     "📰 НОВОСТИ КАНАЛА:\n\nСиноптики прогнозируют бурю в комментах: подписчики копят коины для жестких дуэлей.",
     "📰 НОВОСТИ КАНАЛА:\n\nУченые выяснили, что игра в боте заменяет психотерапевта, но разрушает личную жизнь.",
-    "📰 НОВОСТИ КАНАЛА:\n\nОдин из подписчиков попытался набрать коинов ночью, но разбудил соседа-полицейского. Теперь у него новый статус: 'Клиент изолятора'.",
     "📰 НОВОСТИ КАНАЛА:\n\nАдмин объявил амнистицию для забаненных, но они всё равно не поняли, куда писать.",
-    "📰 НОВОСТИ КАНАЛА:\n\nНа черном рынке комментариев зафиксирован рекордный скачок цен на качественные оскорбления.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВ чате замечен странный тип: он прочитал все правила с первого раза и ничего не написал. Самый подозрительный элемент.",
-    "📰 НОВОСТИ КАНАЛА:\n\nМестные тролли начали объединяться в профсоюзы. Требуют оплату коинами за каждую тонну вылитой желчи.",
-    "📰 НОВОСТИ КАНАЛА:\n\nОдин из комментаторов попытался сдать бутылки, чтобы отыграться в дуэли, но его опередили более опытные коллеги.",
-    "📰 НОВОСТИ КАНАЛА:\n\nНовости ноль, потому что админ ушел спать, а бот работает на честном слове и энергии терпил.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВзломали базу данных канала: оказалось, что 90% активности держатся на трех людях с бессонницей.",
-    "📰 НОВОСТИ КАНАЛА:\n\nСамый активный комментатор недели получил в подарок бесплатный бан от нейросети.",
-    "📰 НОВОСТИ КАНАЛА:\n\nПсихиатры бьют тревогу: игроки в дуэли начали разговаривать во сне фразами 'Принять вызов за 5 коинов'.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВ чате прошел слух, будто коины можно обменять на реальную работу, но все дружно сделали вид, что не расслышали.",
-    "📰 НОВОСТИ КАНАЛА:\n\nОдинокие подписчики находят любовь в дуэлях. Романтика: сначала ты забираешь у нее коины, а потом она кидает в тебя жалобу на спам.",
-    "📰 НОВОСТИ КАНАЛА:\n\nМинздрав предупреждает: избыток душноты в комментариях приводит к выпадению чувства юмора.",
-    "📰 НОВОСТИ КАНАЛА:\n\nСтатистика показывает, что 80% игроков сливают коины в первые пять минут после получения бонуса.",
-    "📰 НОВОСТИ КАНАЛА:\n\nАдмин пообещал выпустить уникальный контент, если подписчики перестанут писать 'первый' под каждым постом.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВ местных подворотнях стали замечать людей, которые вымогают коины за плюсики под постами.",
-    "📰 НОВОСТИ КАНАЛА:\n\nГоворят, если написать в комментах 'Админ молодец', баланс уменьшится на 10 коинов из соображений кармы.",
-    "📰 НОВОСТИ КАНАЛА:\n\nПодписчик со дна топа попытался взять кредит под залог своего мнения, но банк отказал из-за нулевой ликвидности.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВ чате объявлен план 'Перехват': кто-то украл у бота все смайлики с какашками.",
-    "📰 НОВОСТИ КАНАЛА:\n\nЭксперты по кибербезопасности советуют менять пароль от аккаунта после каждой проигранной дуэли.",
-    "📰 НОВОСТИ КАНАЛА:\n\nНочной чат превратился в клуб анонимных лудоманов, обсуждающих курсы вымышленных коинов.",
-    "📰 НОВОСТИ КАНАЛА:\n\nОдин подписчик так долго писал простыню текста в комментарии, что у него постарел кот и обновился айфон.",
-    "📰 НОВОСТИ КАНАЛА:\n\nВ канале ввели налог на душноту. Теперь каждый второй комментарий облагается штрафом в пользу админа.",
-    "📰 НОВОСТИ КАНАЛА:\n\nНичего особенного не произошло, просто у кого-то опять сгорело кресло от слива в дуэли.",
-    "📰 НОВОСТИ КАНАЛА:\n\nРейтинг токсичности канала побил все рекорды. Мы официально обогнали токсичные паблики про автомобили.",
-    "📰 НОВОСТИ КАНАЛА:\n\nЕсли вы дочитали эту новость до конца — вам срочно нужно выйти на улицу и потрогать траву."
 ]
 
 
@@ -219,7 +193,7 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
-# ---------- АДМИН-КОМАНДА (ПЕРВЫМ ПРИОРИТЕТОМ) ----------
+# ---------- АДМИН-КОМАНДА ----------
 @dp.message(Command("add"))
 async def admin_add_coins(m: types.Message):
     if m.from_user.id != ADMIN_ID:
@@ -239,7 +213,6 @@ async def start(m: types.Message):
     await m.answer("👋 Бот запущен! Напиши `@имя_бота` в любом чате канала.")
 
 
-# ---------- УМНЫЙ ТРИГГЕР ДЛЯ КОММЕНТАРИЕВ К ПОСТАМ ----------
 @dp.message()
 async def handle_all_messages(message: types.Message):
     if message.from_user and message.from_user.is_bot:
@@ -247,7 +220,6 @@ async def handle_all_messages(message: types.Message):
 
     text_lower = message.text.lower() if message.text else ""
 
-    # Прямая команда вызова игры
     if text_lower in ["!игра", "игра", "/game"]:
         welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -256,25 +228,20 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    # Проверяем, является ли это обсуждением поста (сообщение в топике/ветке комментариев)
-    # В Telegram у постов в канале связанный чат обсуждений оформлен через message_thread_id
     if message.message_thread_id and message.from_user:
         post_id = message.message_thread_id
         user_id = message.from_user.id
 
-        # Проверяем, писал ли этот пользователь под этим конкретным постом ранее
         existing = db.execute(
             "SELECT 1 FROM post_comments WHERE post_id=? AND user_id=?", 
             (post_id, user_id)
         ).fetchone()
 
         if not existing:
-            # Запоминаем, что пользователь написал под этим постом первый раз
             db.execute("INSERT OR IGNORE INTO post_comments (post_id, user_id) VALUES (?, ?)", (post_id, user_id))
             db.commit()
 
-            # Отправляем приветственное приглашение в игру ровно 1 раз для этого поста
-            teaser = f"🔥 {message.from_user.first_name}, залетай в игровую экономику канала ПОРОГ! Копи коины, устраивай дуэли и забирай призы 👇"
+            teaser = f"🔥 {message.from_user.first_name}, залетай в игровую экономику канала ПОРОГ! Копи коины и забирай призы 👇"
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
             ])
@@ -303,23 +270,25 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "shop",
             "🛒 Магазин призов ПОРОГА",
-            "Потрать коины на эксклюзивные награды (от дорогих к доступным)",
+            "5 позиций: тема для ролика, упоминание, реклама, щиты и буст",
             (
                 "<b>🛒 Магазин призов канала ПОРОГ:</b>\n\n"
-                "Выбирай награду по душе:\n\n"
                 "1️⃣ <b>🎬 Предложить тему для ролика</b> — 500 🪙\n"
-                "<i>Главный лот: право предложить идею для расследования. Если тема подходит, админ снимет по ней видео!</i>\n\n"
-                "2️⃣ <b>👑 Титул «Властелин комментов»</b> — 250 🪙\n"
-                "<i>Элитный постоянный статус: выделяет тебя короной в рейтинге и профиле.</i>\n\n"
-                "3️⃣ <b>🛡 3 иммунитета от слива</b> — 150 🪙\n"
-                "<i>Защитные щиты: следующие 3 поражения в дуэлях не отнимут коины.</i>\n\n"
-                "4️⃣ <b>🎟 Буст х2 на сутки</b> — 50 🪙\n"
-                "<i>Удваивает ежедневный бонус и награду за вброс тейков на 24 часа.</i>"
+                "<i>Обсуждаем тему ролика под ваши желания, и я снимаю на нее!</i>\n\n"
+                "2️⃣ <b>🎥 Упоминание вас в видео</b> — 300 🪙\n"
+                "<i>Ваш ник попадет в титры / вставку с благодарностью в следующем ролике.</i>\n\n"
+                "3️⃣ <b>📢 Реклама своего ТГ-канала</b> — 250 🪙\n"
+                "<i>Реклама у нас в ТГ-канале.</i>\n\n"
+                "4️⃣ <b>🛡 3 иммунитета от слива</b> — 150 🪙\n"
+                "<i>Защитные щиты для безопасных дуэлей.</i>\n\n"
+                "5️⃣ <b>🎟 Буст х2 на сутки</b> — 50 🪙\n"
+                "<i>Удваивает бонус и тейки на 24 часа.</i>"
             ),
             kb(
                 ("🎬 Тема для ролика (500 🪙)", f"buy:{uid}:theme"),
-                ("👑 Титул «Властелин комментов» (250 🪙)", f"buy:{uid}:title"),
-                ("🛡 3 иммунитета от слива (150 🪙)", f"buy:{uid}:shield"),
+                ("🎥 Упоминание в видео (300 🪙)", f"buy:{uid}:mention"),
+                ("📢 Реклама в ТГ-канале (250 🪙)", f"buy:{uid}:ads"),
+                ("🛡 3 иммунитета (150 🪙)", f"buy:{uid}:shield"),
                 ("🎟 Буст х2 на сутки (50 🪙)", f"buy:{uid}:boost"),
             )
         ),
@@ -340,7 +309,7 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "stats", 
             "📊 Моя статистика", 
-            "Посмотреть свой баланс, титул и победы в игре", 
+            "Посмотреть свой баланс, статус и победы в игре", 
             stats_text(q.from_user)
         ),
         article(
@@ -381,7 +350,7 @@ async def on_work(c: types.CallbackQuery):
     await c.answer()
 
 
-# ---------- ОБРАБОТЧИК МАГАЗИНА ----------
+# ---------- ОБРАБОТЧИК МАГАЗИНА (5 ТОВАРОВ) ----------
 @dp.callback_query(F.data.startswith("buy:"))
 async def on_buy(c: types.CallbackQuery):
     _, owner, item = c.data.split(":")
@@ -394,7 +363,8 @@ async def on_buy(c: types.CallbackQuery):
 
     prices = {
         "theme": 500,
-        "title": 250,
+        "mention": 300,
+        "ads": 250,
         "shield": 150,
         "boost": 50
     }
@@ -405,38 +375,36 @@ async def on_buy(c: types.CallbackQuery):
 
     new_coins = coins - price
 
+    user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"
+
     if item == "theme":
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, f"🎉 **Успешная покупка!** Ты приобрел право предложить тему для нового ролика за 500 🪙.\n\nАдмину уже отправлено уведомление о твоей покупке. Скоро он свяжется с тобой или жди ответа!")
-        
-        try:
-            user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"
-            admin_msg = (
-                f"🚨 **НОВАЯ ПОКУПКА ТЕМЫ ДЛЯ РОЛИКА!**\n\n"
-                f"👤 Пользователь: {user_link} (ID: <code>{c.from_user.id}</code>)\n"
-                f"🪙 Списано: 500 коинов\n\n"
-                f"<i>Напиши ему в личку, чтобы узнать его идею для видео!</i>"
-            )
-            await bot.send_message(ADMIN_ID, admin_msg, parse_mode="HTML")
-        except Exception as e:
-            print(f"Не удалось отправить уведомление админу: {e}")
+        await edit(c, "🎉 **Покупка успешна!** Ты приобрел право обсудить тему ролика. Админу отправлено уведомление, он скоро напишет тебе!")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>КУПИЛИ ТЕМУ РОЛИКА (500 🪙)!</b>\n👤 Пользователь: {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
 
-    elif item == "title":
-        if u["has_title"]:
-            return await c.answer("У тебя уже куплен этот титул!", show_alert=True)
-        db.execute("UPDATE users SET coins=?, has_title=1 WHERE id=?", (new_coins, owner))
+    elif item == "mention":
+        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, f"👑 **Поздравляем!** Титул **«Властелин комментов»** успешно приобретен и навсегда закреплен за тобой! Теперь ты выделен короной в общем рейтинге и статистике.")
+        await edit(c, "🎉 **Покупка успешна!** Упоминание в видео приобретено. Напиши админу свой ник/текст для титров.")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили упоминание в видео (300 🪙)!</b>\n👤 Пользователь: {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
+
+    elif item == "ads":
+        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+        db.commit()
+        await edit(c, "📢 **Реклама в ТГ-канале куплена!** Скинь админу текст/ссылку для публикации.")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили рекламу в ТГ (250 🪙)!</b>\n👤 Пользователь: {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
+
     elif item == "shield":
         db.execute("UPDATE users SET coins=?, shield_count=shield_count+3 WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, f"🛡 **Успешно!** К твоему профилю добавлено 3 защитных щита. Следующие 3 поражения в дуэлях не отнимут у тебя коины.")
+        await edit(c, "🛡 **Успешно!** Добавлено 3 защитных щита от слива в дуэлях.")
+
     elif item == "boost":
         expiry = (datetime.datetime.now() + datetime.timedelta(days=1)).isoformat()
         db.execute("UPDATE users SET coins=?, boost_until=? WHERE id=?", (new_coins, expiry, owner))
         db.commit()
-        await edit(c, f"💥 **Буст активирован!** На ближайшие 24 часа ежедневный бонус приносит х2 коинов, а тейки дают удвоенный профит!")
+        await edit(c, "💥 **Буст активирован!** На 24 часа ежедневный бонус и тейки приносят х2 коинов.")
 
     await c.answer()
 
@@ -466,7 +434,7 @@ async def on_duel(c: types.CallbackQuery):
         db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
         shield_msg = ""
 
-    db.execute("UPDATE users=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
+    db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
     db.commit()
     
     add_news(f"🎯 Дуэльная бойня: {winner['name']} разнес мнение {loser['name']} и забрал {bet} 🪙!")

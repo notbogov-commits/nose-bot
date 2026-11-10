@@ -15,7 +15,6 @@ from aiogram.types import (
 from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
-BONUS_MIN, BONUS_MAX = -5, 10
 DEFAULT_BET = 5
 
 ADMIN_ID = 9119538825
@@ -83,7 +82,6 @@ def get_toxicity_title(coins: int) -> str:
         return "🗿 Абсолютный властелин комментов"
 
 
-# Статистика с понятным пояснением для людей
 def stats_text(user: types.User) -> str:
     u = get_user(user)
     title = get_toxicity_title(u["coins"])
@@ -96,12 +94,13 @@ def stats_text(user: types.User) -> str:
     )
 
 
+# Общий рейтинг всех комментаторов (без ограничения в 5 человек)
 def top_text() -> str:
-    rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC LIMIT 5").fetchall()
+    rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC").fetchall()
     if not rows:
         return "Пока никто не заработал коины"
     lines = [f"{i + 1}. {r['name']} — {r['coins']} коинов" for i, r in enumerate(rows)]
-    return "🏆 Топ-5 комментаторов:\n" + "\n".join(lines)
+    return "🏆 Общий рейтинг комментаторов:\n" + "\n".join(lines)
 
 
 NEWS_JOKES = [
@@ -145,6 +144,7 @@ def get_news_text() -> str:
     return random.choice(NEWS_JOKES)
 
 
+# Ежедневный бонус: строго +10 коинов без отнимания
 def do_bonus(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -156,13 +156,14 @@ def do_bonus(user: types.User) -> str:
             mins, _ = divmod(remainder, 60)
             return f"{u['name']}, бонус уже получен! Жди еще {hours} ч. {mins} мин."
 
-    delta = random.randint(BONUS_MIN, BONUS_MAX)
+    delta = 10
     new_coins = u["coins"] + delta
     db.execute("UPDATE users SET coins=?, last_bonus=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
-    return f"{u['name']}, ежедневный бонус принес {delta:+d} коинов! Баланс: {new_coins} 🪙"
+    return f"{u['name']}, ежедневный бонус принес +{delta} коинов! Баланс: {new_coins} 🪙"
 
 
+# Работа 50/50: придумываем название ролика (+3 или -3)
 def do_work(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -172,16 +173,15 @@ def do_work(user: types.User) -> str:
             timeLeft = datetime.timedelta(hours=6) - (now - last_dt)
             hours, remainder = divmod(int(timeLeft.total_seconds()), 3600)
             mins, _ = divmod(remainder, 60)
-            return f"{u['name']}, отдохни от кликов! Следующая попытка через {hours} ч. {mins} мин."
+            return f"{u['name']}, ты уже предлагал название ролика! Следующая попытка через {hours} ч. {mins} мин."
 
-    if random.random() < 0.55:
-        earned = random.randint(3, 8)
-        new_coins = u["coins"] + earned
-        msg = f"💼 Успешный клик в боте! Тебе накинули +{earned} коинов. Баланс: {new_coins} 🪙"
+    success = random.random() < 0.5
+    if success:
+        new_coins = u["coins"] + 3
+        msg = f"🎬 Твое название ролика зашло зрителям на ура! Тренд подхвачен, получено **+3 коина**. Баланс: {new_coins} 🪙"
     else:
-        lost = random.randint(2, 5)
-        new_coins = u["coins"] - lost
-        msg = f"💢 Неудачная попытка в игре! Штраф -{lost} коинов. Баланс: {new_coins} 🪙"
+        new_coins = u["coins"] - 3
+        msg = f"📉 Ты предложил кринжовое название ролика, зрители не оценили и заминусили... Потеряно **-3 коина**. Баланс: {new_coins} 🪙"
 
     db.execute("UPDATE users SET coins=?, last_work=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
@@ -198,13 +198,12 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
-# ---------- ТРИГГЕР НА "!игра" В КОММЕНТАРИЯХ С ПОЯСНЕНИЕМ ----------
 @dp.message(F.text.lower().in_(["!игра", "игра", "/game"]))
 async def cmd_game_trigger(message: types.Message):
     user = get_user(message.from_user)
     welcome_text = (
         f"💬 <b>Привет, {user['name']}! Это мини-игра для подписчиков канала.</b>\n\n"
-        f"Здесь можно собирать коины, крутить топ и устраивать дуэли.\n"
+        f"Здесь можно собирать коины, крутить общий рейтинг и устраивать дуэли.\n"
         f"⚠️ <i>Важно: писать реальные комментарии в канале для этого не нужно, вся игра работает прямо в боте по кнопкам!</i>\n\n"
         f"👇 Нажми на кнопку ниже, чтобы открыть игровое меню:"
     )
@@ -216,7 +215,6 @@ async def cmd_game_trigger(message: types.Message):
     await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
 
 
-# ---------- ИНЛАЙН-МЕНЮ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -239,16 +237,16 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "bonus", 
             "🎁 Ежедневный бонус", 
-            "Получай от -5 до +10 коинов каждый день (раз в 24 часа)", 
+            "Забирай стабильно +10 коинов каждый день (раз в 24 часа)", 
             "Получаю ежедневный бонус...",
             kb(("Забрать бонус 🎁", f"bonus:{uid}"))
         ),
         article(
             "work", 
-            "💼 Игровой бонус (раз в 6 часов)", 
-            "Кликай каждые 6 часов (риск получить или потерять коины)", 
-            "Получаю бонус активности...",
-            kb(("Кликнуть удачу 💼", f"work:{uid}"))
+            "🎬 Назвать выпуск ролика (раз в 6 часов)", 
+            "Шанс 50/50: зашедшее название (+3) или провал (-3)", 
+            "Предлагаю название ролика...",
+            kb(("Предложить название 🎬", f"work:{uid}"))
         ),
         article(
             "stats", 
@@ -258,8 +256,8 @@ async def inline_query_menu(q: types.InlineQuery):
         ),
         article(
             "top", 
-            "🏆 Топ-5 комментаторов", 
-            "Рейтинг самых богатых участников канала", 
+            "🏆 Общий рейтинг комментаторов", 
+            "Полный список всех участников канала по коинам", 
             top_text()
         ),
         article(

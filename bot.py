@@ -37,6 +37,11 @@ db.executescript(
         shield_count INTEGER DEFAULT 0,
         boost_until TEXT
     );
+    CREATE TABLE IF NOT EXISTS post_comments (
+        post_id INTEGER,
+        user_id INTEGER,
+        PRIMARY KEY (post_id, user_id)
+    );
     CREATE TABLE IF NOT EXISTS news_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         text TEXT,
@@ -214,14 +219,27 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
-TEASERS = [
-    "Много текста, а коины сами себя не заработают. Го в игру 👇",
-    "Смотрю, эксперт в комментах нашелся. А в дуэли слабо победить? Проверь баланс 👇",
-    "Хватит душнить, лучше открой игру и подними коинов 👇",
-    "Красиво пишешь, а в общем рейтинге на каком месте? Жми 👇",
-    "Админ одобряет этот высер, но в игре было бы интереснее. Залетай 👇"
-]
+# ---------- АДМИН-КОМАНДА (ПЕРВЫМ ПРИОРИТЕТОМ) ----------
+@dp.message(Command("add"))
+async def admin_add_coins(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    args = m.text.split()
+    if len(args) < 2 or not args[1].lstrip("-").isdigit():
+        return
+    amount = int(args[1])
+    db.execute("UPDATE users SET coins=coins+? WHERE id=?", (amount, m.from_user.id))
+    db.commit()
+    u = get_user(m.from_user)
+    await m.reply(f"👑 Админ-накрутка: {amount:+d} коинов. Баланс: {u['coins']} 🪙")
 
+
+@dp.message(Command("start"))
+async def start(m: types.Message):
+    await m.answer("👋 Бот запущен! Напиши `@имя_бота` в любом чате канала.")
+
+
+# ---------- УМНЫЙ ТРИГГЕР ДЛЯ КОММЕНТАРИЕВ К ПОСТАМ ----------
 @dp.message()
 async def handle_all_messages(message: types.Message):
     if message.from_user and message.from_user.is_bot:
@@ -229,6 +247,7 @@ async def handle_all_messages(message: types.Message):
 
     text_lower = message.text.lower() if message.text else ""
 
+    # Прямая команда вызова игры
     if text_lower in ["!игра", "игра", "/game"]:
         welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -237,12 +256,29 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    if random.random() < 0.15 and message.from_user:
-        teaser = random.choice(TEASERS)
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
-        ])
-        await message.reply(teaser, reply_markup=keyboard, parse_mode="HTML")
+    # Проверяем, является ли это обсуждением поста (сообщение в топике/ветке комментариев)
+    # В Telegram у постов в канале связанный чат обсуждений оформлен через message_thread_id
+    if message.message_thread_id and message.from_user:
+        post_id = message.message_thread_id
+        user_id = message.from_user.id
+
+        # Проверяем, писал ли этот пользователь под этим конкретным постом ранее
+        existing = db.execute(
+            "SELECT 1 FROM post_comments WHERE post_id=? AND user_id=?", 
+            (post_id, user_id)
+        ).fetchone()
+
+        if not existing:
+            # Запоминаем, что пользователь написал под этим постом первый раз
+            db.execute("INSERT OR IGNORE INTO post_comments (post_id, user_id) VALUES (?, ?)", (post_id, user_id))
+            db.commit()
+
+            # Отправляем приветственное приглашение в игру ровно 1 раз для этого поста
+            teaser = f"🔥 {message.from_user.first_name}, залетай в игровую экономику канала ПОРОГ! Копи коины, устраивай дуэли и забирай призы 👇"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
+            ])
+            await message.reply(teaser, reply_markup=keyboard, parse_mode="HTML")
 
 
 @dp.inline_query()
@@ -374,7 +410,6 @@ async def on_buy(c: types.CallbackQuery):
         db.commit()
         await edit(c, f"🎉 **Успешная покупка!** Ты приобрел право предложить тему для нового ролика за 500 🪙.\n\nАдмину уже отправлено уведомление о твоей покупке. Скоро он свяжется с тобой или жди ответа!")
         
-        # Автоматическое уведомление тебе (админу) в личку
         try:
             user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"
             admin_msg = (
@@ -431,31 +466,12 @@ async def on_duel(c: types.CallbackQuery):
         db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
         shield_msg = ""
 
-    db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
+    db.execute("UPDATE users=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
     db.commit()
     
     add_news(f"🎯 Дуэльная бойня: {winner['name']} разнес мнение {loser['name']} и забрал {bet} 🪙!")
     await edit(c, f"⚔️ В дуэли мнений победил {winner['name']} и забрал {bet} 🪙 у {loser['name']}!{shield_msg}")
     await c.answer()
-
-
-@dp.message(Command("add"))
-async def admin_add_coins(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-    args = m.text.split()
-    if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        return
-    amount = int(args[1])
-    db.execute("UPDATE users SET coins=coins+? WHERE id=?", (amount, m.from_user.id))
-    db.commit()
-    u = get_user(m.from_user)
-    await m.reply(f"👑 Админ-накрутка: {amount:+d} коинов. Баланс: {u['coins']} 🪙")
-
-
-@dp.message(Command("start"))
-async def start(m: types.Message):
-    await m.answer("👋 Бот запущен! Напиши `@имя_бота` в любом чате канала.")
 
 
 async def handle(request):

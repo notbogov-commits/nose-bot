@@ -21,6 +21,9 @@ CREDIT_DEBT = 15
 DEFAULT_BET = 10
 PROMOS = {"start": 5, "welcome": 3}
 
+# Твой Telegram ID для админ-команд
+ADMIN_ID = 9119538825
+
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
@@ -42,6 +45,11 @@ db.executescript(
         bankrupt_used INTEGER DEFAULT 0,
         wins INTEGER DEFAULT 0,
         losses INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS news_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT,
+        time TEXT
     );
     CREATE TABLE IF NOT EXISTS promo_used (
         user_id INTEGER,
@@ -69,7 +77,6 @@ def kb(*buttons: tuple[str, str]) -> InlineKeyboardMarkup:
     )
 
 
-# Проверка кредита и прогрессивного штрафа (+5 см за каждые просроченные сутки)
 def check_credit_timeout(u: sqlite3.Row):
     if u["debt"] > 0 and u["debt_time"]:
         debt_dt = datetime.datetime.fromisoformat(u["debt_time"])
@@ -84,28 +91,33 @@ def check_credit_timeout(u: sqlite3.Row):
                 db.commit()
 
 
-# Текст правил
+def add_news(text: str):
+    now = datetime.datetime.now().isoformat()
+    db.execute("INSERT INTO news_log (text, time) VALUES (?, ?)", (text, now))
+    db.commit()
+
+
 def rules_text() -> str:
     return (
         "📜 ПРАВИЛА ИГРЫ:\n\n"
-        "1. 👃 **Вырастить нос:** Раз в сутки (от -5 до +10 см).\n"
-        "2. 💼 **Подработка:** Раз в 6 часов (риск плюс или минус см).\n"
-        "3. 🃏 **Шуллерский обмен:** Раз в 12 часов. Афера с риском обмануть систему или спалиться на штраф.\n"
-        "4. 💳 **Кредит:** +10 см, вернуть 15 см за 24 часа.\n"
-        "5. ⚠️ **Просрочка:** За каждые лишние сутки долг растет еще на +5 см.\n"
-        "6. 📢 **Банкротство:** Списание долгов при минусе (1 раз).\n"
-        "7. 🎯 **Дуэли:** Ставки сантиметрами против игроков."
+        "1. 👃 **Вырастить нос:** Раз в сутки (от -5 до +10 см Носатости).\n"
+        "2. 💼 **Подработка:** Раз в 6 часов (риск плюс или минус к Носатости).\n"
+        "3. 🃏 **Шуллерский обмен:** Раз в 12 часов. Афера с риском обмануть систему или спалиться.\n"
+        "4. 🎰 **Носатая Рулетка:** Ставки Носатостью на Красное (2x), Чёрное (2x) или Зеро (14x).\n"
+        "5. 📰 **Носатые новости:** Свежие криминальные сводки и получерный юмор.\n"
+        "6. 💳 **Кредит:** +10 см Носатости, вернуть 15 см за 24 часа (+5 см/сутки за просрочку).\n"
+        "7. 📢 **Банкротство:** Сброс долгов при отрицательной Носатости (1 раз).\n"
+        "8. 🎯 **Дуэли:** Соревнования в Носатости против игроков."
     )
 
 
-# Тексты статистики и топов
 def stats_text(user: types.User) -> str:
     u = get_user(user)
     check_credit_timeout(u)
     u = get_user(user)
     return (
-        f"📊 Статистика игрока {u['name']}\n"
-        f"👃 Размер носа: {u['size']} см\n"
+        f"📊 Носатая статистика {u['name']}\n"
+        f"👃 Носатость: {u['size']} см\n"
         f"💳 Долг: {u['debt']} см\n"
         f"🏆 Победы: {u['wins']} | Поражения: {u['losses']}"
     )
@@ -114,9 +126,9 @@ def stats_text(user: types.User) -> str:
 def top_text() -> str:
     rows = db.execute("SELECT name, size FROM users ORDER BY size DESC LIMIT 10").fetchall()
     if not rows:
-        return "Пока никто не играл"
-    lines = [f"{i + 1}. {r['name']} — {r['size']} см" for i, r in enumerate(rows)]
-    return "🏆 Топ носов чата:\n" + "\n".join(lines)
+        return "Пока никто не мерялся Носатостью"
+    lines = [f"{i + 1}. {r['name']} — {r['size']} см Носатости" for i, r in enumerate(rows)]
+    return "🏆 Носатый топ чата:\n" + "\n".join(lines)
 
 
 def top_wins_text() -> str:
@@ -124,7 +136,7 @@ def top_wins_text() -> str:
     if not rows:
         return "Пока нет побед в дуэлях"
     lines = [f"{i + 1}. {r['name']} — {r['wins']} поб." for i, r in enumerate(rows)]
-    return "⚔️ Топ дуэлянтов:\n" + "\n".join(lines)
+    return "⚔️ Топ Носатых дуэлянтов:\n" + "\n".join(lines)
 
 
 # Игровые действия
@@ -140,7 +152,7 @@ def do_grow(user: types.User) -> str:
             timeLeft = datetime.timedelta(days=1) - (now - last_grow_dt)
             hours, remainder = divmod(int(timeLeft.total_seconds()), 3600)
             minutes, _ = divmod(remainder, 60)
-            return f"{u['name']}, ты уже тянул нос! Попытка через {hours} ч. {minutes} мин."
+            return f"{u['name']}, ты уже растил нос! Попытка через {hours} ч. {minutes} мин."
 
     delta = random.randint(GROW_MIN, GROW_MAX)
     event_text = ""
@@ -150,7 +162,7 @@ def do_grow(user: types.User) -> str:
         event_text = "\n❄️ Мороз! Нос съежился на 3 см."
     elif event_roll > 0.85:
         delta += 4
-        event_text = "\n☀️ Солнечный день! +4 см."
+        event_text = "\n☀️ Солнечный день! +4 см к Носатости."
 
     debt = u["debt"]
     note = ""
@@ -163,7 +175,7 @@ def do_grow(user: types.User) -> str:
     size = u["size"] + delta
     db.execute("UPDATE users SET size=?, last_grow=?, debt=? WHERE id=?", (size, now.isoformat(), debt, user.id))
     db.commit()
-    return f"{u['name']}, размер изменился на {delta:+d} см.{event_text} Теперь: {size} см{note}"
+    return f"{u['name']}, Носатость изменилась на {delta:+d} см.{event_text} Теперь: {size} см{note}"
 
 
 def do_work(user: types.User) -> str:
@@ -184,11 +196,11 @@ def do_work(user: types.User) -> str:
     if success:
         earned = random.randint(3, 7)
         size = u["size"] + earned
-        msg = f"💼 {u['name']} успешно подработал! Нос вырос на +{earned} см. Теперь: {size} см"
+        msg = f"💼 {u['name']} успешно подработал! Носатость выросла на +{earned} см. Теперь: {size} см"
     else:
         lost = random.randint(2, 5)
         size = u["size"] - lost
-        msg = f"💢 {u['name']} прогорел на авантюре! Нос уменьшился на -{lost} см. Теперь: {size} см"
+        msg = f"💢 {u['name']} прогорел на авантюре! Носатость уменьшилась на -{lost} см. Теперь: {size} см"
 
     db.execute("UPDATE users SET size=?, last_work=? WHERE id=?", (size, now.isoformat(), user.id))
     db.commit()
@@ -213,7 +225,8 @@ def do_scam(user: types.User) -> str:
     if roll < 0.40:
         gain = random.randint(5, 8)
         size = u["size"] + gain
-        msg = f"🃏 {u['name']} провел дерзкую аферу на черном рынке! +{gain} см. Теперь: {size} см"
+        msg = f"🃏 {u['name']} провел дерзкую шуллерскую аферу! +{gain} см Носатости. Теперь: {size} см"
+        add_news(f"🚨 Шуллерский прорыв: {u['name']} обвел систему вокруг пальца и поднял +{gain} см!")
     elif roll < 0.75:
         gain = random.randint(2, 3)
         size = u["size"] + gain
@@ -221,11 +234,76 @@ def do_scam(user: types.User) -> str:
     else:
         lost = 5
         size = u["size"] - lost
-        msg = f"🚨 Шуллера поймали за руку! Штраф -{lost} см. Теперь: {size} см"
+        msg = f"🚨 Шуллера поймали за руку во время обмена! Штраф -{lost} см. Теперь: {size} см"
+        add_news(f"💥 Позор на черном рынке: {u['name']} попался на шуллерстве и потерял {lost} см!")
 
     db.execute("UPDATE users SET size=?, last_scam=? WHERE id=?", (size, now.isoformat(), user.id))
     db.commit()
     return msg
+
+
+# Казино Рулетка
+def do_roulette(user: types.User, choice: str, bet: int) -> str:
+    u = get_user(user)
+    check_credit_timeout(u)
+    u = get_user(user)
+
+    if u["size"] < bet:
+        return f"{u['name']}, у тебя недостаточно Носатости для ставки ({u['size']} из {bet} см)!"
+
+    # Рулетка: Красное (1-18), Черное (19-36), Зеро (0)
+    roll_num = random.randint(0, 36)
+    if roll_num == 0:
+        res_color = "zero"
+        res_text = "🟢 ЗЕРО (0)"
+    elif roll_num % 2 != 0:
+        res_color = "red"
+        res_text = f"🔴 Красное ({roll_num})"
+    else:
+        res_color = "black"
+        res_text = f"⚫️ Черное ({roll_num})"
+
+    won = False
+    payout = 0
+    if choice == "red" and res_color == "red":
+        won = True
+        payout = bet * 2
+    elif choice == "black" and res_color == "black":
+        won = True
+        payout = bet * 2
+    elif choice == "zero" and res_color == "zero":
+        won = True
+        payout = bet * 14
+
+    if won:
+        new_size = u["size"] + bet * (payout // bet - 1)
+        msg = f"🎰 Рулетка крутанулась! Выпало: {res_text}.\n🎉 Поздравляем, {u['name']} сорвал куш и выиграл +{bet * (payout // bet - 1)} см Носатости!"
+        if bet >= 10 or payout >= 50:
+            add_news(f"🏆 Крупный выигрыш в казино: {u['name']} поднял сразу {payout} см на рулетке!")
+    else:
+        new_size = u["size"] - bet
+        msg = f"🎰 Рулетка крутанулась! Выпало: {res_text}.\n💸 Увы, {u['name']} проиграл ставку и лишился -{bet} см Носатости."
+
+    db.execute("UPDATE users SET size=? WHERE id=?", (new_size, user.id))
+    db.commit()
+    return msg
+
+
+# Носатые новости с черным юмором
+def get_news_text() -> str:
+    # Проверяем реальные события в базе за последнее время
+    row = db.execute("SELECT text FROM news_log ORDER BY id DESC LIMIT 1").fetchone()
+    if row and random.random() < 0.6:  # 60% шанс показать реальную свежую новость
+        return f"📰 НОСАТЫЕ СВОДКИ:\n\n{row['text']}"
+    
+    # Иначе — дежурная сводка и получерная шутка
+    jokes = [
+        "📰 НОСАТЫЕ СВОДКИ:\n\nПо игре тишина, на рынке стабильный недовес. Говорят, патологоанатомы в моргах начали подрабатывать шуллерством — носы воруют чище, чем кредиторы.",
+        "📰 НОСАТЫЕ СВОДКИ:\n\nНовостей ноль. Один добряк попытался вернуть кредит носом, но банк отказал, сославшись на то, что бэушные носы второй свежести им не нужны.",
+        "📰 НОСАТЫЕ СВОДКИ:\n\nВ чате затишье. Синоптики объявили штормовое предупреждение: у кого длинный нос — прячьте на улице, иначе коммунальщики примут за сосульки и сбьют лопатой.",
+        "📰 НОСАТЫЕ СВОДКИ:\n\nНичего нового. Одинокие носатые граждане нашли утешение в кредитах: хоть где-то тебя имеют бесплатно и регулярно."
+    ]
+    return random.choice(jokes)
 
 
 def do_credit(user: types.User) -> str:
@@ -246,7 +324,7 @@ def do_credit(user: types.User) -> str:
     db.execute("UPDATE users SET size=size+?, debt=?, debt_time=?, last_credit_time=? WHERE id=?",
                (CREDIT_AMOUNT, CREDIT_DEBT, due_time.isoformat(), now.isoformat(), user.id))
     db.commit()
-    return f"{u['name']} взял кредит (+{CREDIT_AMOUNT} см). Вернуть {CREDIT_DEBT} см за 24 часа!"
+    return f"{u['name']} взял кредит (+{CREDIT_AMOUNT} см Носатости). Вернуть {CREDIT_DEBT} см за 24 часа!"
 
 
 def do_pay_credit(user: types.User) -> str:
@@ -259,7 +337,7 @@ def do_pay_credit(user: types.User) -> str:
     
     debt_amt = u["debt"]
     if u["size"] < debt_amt:
-        return f"{u['name']}, не хватает сантиметров на носу для погашения ({u['size']} из {debt_amt} см)."
+        return f"{u['name']}, не хватает Носатости для погашения ({u['size']} из {debt_amt} см)."
 
     db.execute("UPDATE users SET size=size-?, debt=0, debt_time=NULL WHERE id=?", (debt_amt, user.id))
     db.commit()
@@ -269,13 +347,13 @@ def do_pay_credit(user: types.User) -> str:
 def do_bankrupt(user: types.User) -> str:
     u = get_user(user)
     if u["size"] >= 0:
-        return f"{u['name']}, банкротство доступно только при отрицательном балансе!"
+        return f"{u['name']}, банкротство доступно только при отрицательной Носатости!"
     if u["bankrupt_used"] == 1:
         return f"{u['name']}, ты уже использовал банкротство."
 
     db.execute("UPDATE users SET size=0, debt=0, debt_time=NULL, bankrupt_used=1 WHERE id=?", (user.id,))
     db.commit()
-    return f"📢 {u['name']} объявил банкротство! Долги списаны, нос обнулен до 0 см."
+    return f"📢 {u['name']} объявил банкротство! Долги списаны, Носатость обнулена до 0 см."
 
 
 def do_promo(user: types.User, code: str) -> str:
@@ -289,7 +367,7 @@ def do_promo(user: types.User, code: str) -> str:
     db.execute("INSERT INTO promo_used VALUES (?, ?)", (user.id, code))
     db.execute("UPDATE users SET size=size+? WHERE id=?", (bonus, user.id))
     db.commit()
-    return f"{u['name']} активировал промокод (+{bonus} см)!"
+    return f"{u['name']} активировал промокод (+{bonus} см Носатости)!"
 
 
 def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultArticle:
@@ -301,7 +379,7 @@ def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultAr
     )
 
 
-# ---------- ИНЛАЙН-МЕНЮ ----------
+# ---------- ИНЛАЙН-МЕНЮ С КАЗИНО И НОВОСТЯМИ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -309,30 +387,27 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     results = [
-        # 1. Название капсом в самом верху
         article("title", "👃 ВЕЛИКИЙ НОСАТЫЙ ПУТЬ", "✨ Игра «ВЕЛИКИЙ НОСАТЫЙ ПУТЬ»\nВыберите нужное действие в меню ниже:"),
-        
-        # 2. Правила на втором месте
         article("rules", "📜 Правила игры", rules_text()),
-        
-        # 3. Основной геймплей
+        article("news", "📰 Носатые новости", get_news_text()),
         article("grow", "👃 Вырастить нос (раз в сутки)", "Тяну нос...",
                 kb(("Вырастить 👃", f"grow:{uid}"))),
         article("work", "💼 Подработка (раз в 6 часов)", "Ищу подработку...",
                 kb(("Начать подработку 💼", f"work:{uid}"))),
         article("scam", "🃏 Шуллерский обмен (раз в 12 часов)", "Провожу аферу...",
                 kb(("Рискнуть / Обменять 🃏", f"scam:{uid}"))),
-        
-        # 4. Профиль и статистика
+        # Казино рулетка
+        article("roulette_red", f"🎰 Казино: Красное (ставка {bet} см)", f"Крутим рулетку на Красное (ставка {bet} см)...",
+                kb(("🔴 Поставить на Красное", f"roulette:{uid}:red:{bet}"))),
+        article("roulette_black", f"🎰 Казино: Черное (ставка {bet} см)", f"Крутим рулетку на Черное (ставка {bet} см)...",
+                kb(("⚫️ Поставить на Черное", f"roulette:{uid}:black:{bet}"))),
+        article("roulette_zero", f"🎰 Казино: ЗЕРО 14x (ставка {bet} см)", f"Крутим рулетку на ЗЕРО (ставка {bet} см)...",
+                kb(("🟢 Поставить на ЗЕРО", f"roulette:{uid}:zero:{bet}"))),
         article("stats", "📊 Моя статистика", stats_text(q.from_user)),
-        article("top", "🏆 Топ носов", top_text()),
+        article("top", "🏆 Носатый топ", top_text()),
         article("topwins", "⚔️ Топ дуэлянтов", top_wins_text()),
-        
-        # 5. Активности и дуэли
         article("duel", f"🎯 Дуэль (ставка: {bet} см)", f"{q.from_user.first_name} вызывает на дуэль! Ставка: {bet} см",
                 kb((f"Принять вызов ({bet} см)", f"duel:{uid}:{bet}"))),
-        
-        # 6. Финансы
         article("credit", "💳 Взять кредит (+10 см)", "Беру кредит...",
                 kb(("Взять кредит", f"credit:{uid}"))),
         article("pay_credit", "💸 Вернуть кредит", "Возвращаю кредит...",
@@ -342,7 +417,7 @@ async def inline_query_menu(q: types.InlineQuery):
     ]
     if text.lower() in PROMOS:
         results.insert(
-            2,
+            3,
             article("promo", f"🎁 Промокод: {text.lower()}", "Активирую...",
                     kb(("Активировать", f"promo:{uid}:{text.lower()}"))),
         )
@@ -377,6 +452,22 @@ async def on_scam(c: types.CallbackQuery):
     await c.answer()
 
 
+@dp.callback_query(F.data.startswith("roulette:"))
+async def on_roulette(c: types.CallbackQuery):
+    _, owner, choice, bet = c.data.split(":")
+    if c.from_user.id != int(owner):
+        return await c.answer("Это не твоя кнопка", show_alert=True)
+    
+    # Визуальный эффект вращения рулетки в сообщении
+    for frame in ["🎡 Рулетка крутится... [🔴 Красное?]", "🎡 Рулетка крутится... [⚫️ Черное?]", "🎡 Рулетка крутится... [🟢 ЗЕРО? Лонг-драйв...]"]:
+        await edit(c, frame)
+        await asyncio.sleep(0.3)
+
+    result_msg = do_roulette(c.from_user, choice, int(bet))
+    await edit(c, result_msg)
+    await c.answer()
+
+
 @dp.callback_query(F.data.startswith("credit:"))
 async def on_credit(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
@@ -405,7 +496,7 @@ async def on_bankrupt(c: types.CallbackQuery):
 async def on_promo(c: types.CallbackQuery):
     _, owner, code = c.data.split(":", 2)
     if c.from_user.id != int(owner):
-        return await c.answer("Это не твоя кнопка", show_script=True)
+        return await c.answer("Это не твоя кнопка", show_alert=True)
     await edit(c, do_promo(c.from_user, code))
     await c.answer()
 
@@ -426,11 +517,31 @@ async def on_duel(c: types.CallbackQuery):
     db.execute("UPDATE users SET size=size+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
     db.execute("UPDATE users SET size=size-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
     db.commit()
-    await edit(
-        c,
-        f"⚔️ Дуэль завершена!\n{a['name']} против {b['name']}\n🏆 Победил {winner['name']} и забрал {bet} см у {loser['name']}!",
-    )
+    
+    duel_res = f"⚔️ Дуэль завершена!\n{a['name']} против {b['name']}\n🏆 Победил {winner['name']} и забрал {bet} см Носатости у {loser['name']}!"
+    add_news(f"🎯 Дуэльная бойня: {winner['name']} ободрал {loser['name']} на {bet} см Носатости!")
+    
+    await edit(c, duel_res)
     await c.answer()
+
+
+# Админ-команда для накрутки баланса
+@dp.message(Command("add"))
+async def admin_add_size(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    
+    args = m.text.split()
+    if len(args) < 2 or not args[1].lstrip("-").isdigit():
+        return await m.reply("Использование: `/add [число]`", parse_mode="Markdown")
+
+    amount = int(args[1])
+    u = get_user(m.from_user)
+    db.execute("UPDATE users SET size=size+? WHERE id=?", (amount, m.from_user.id))
+    db.commit()
+    
+    updated_user = db.execute("SELECT size FROM users WHERE id=?", (m.from_user.id,)).fetchone()
+    await m.reply(f"👑 Админ-накрутка: Носатость изменена на {amount:+d} см. Текущая Носатость: {updated_user['size']} см")
 
 
 @dp.message(Command("start"))

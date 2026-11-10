@@ -16,7 +16,6 @@ from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
 DEFAULT_BET = 5
-
 ADMIN_ID = 9119538825
 
 bot = Bot(TOKEN)
@@ -33,7 +32,11 @@ db.executescript(
         last_bonus TEXT,
         last_work TEXT,
         wins INTEGER DEFAULT 0,
-        losses INTEGER DEFAULT 0
+        losses INTEGER DEFAULT 0,
+        has_title INTEGER DEFAULT 0,
+        shield_count INTEGER DEFAULT 0,
+        boost_until TEXT,
+        has_badge INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS news_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +70,10 @@ def add_news(text: str):
     db.commit()
 
 
-def get_toxicity_title(coins: int) -> str:
+def get_toxicity_title(u: sqlite3.Row) -> str:
+    if u["has_title"]:
+        return "👑 Властелин комментов (Элитный статус)"
+    coins = u["coins"]
     if coins < 0:
         return "🤡 Главный должник и клоун чата"
     elif coins <= 5:
@@ -84,21 +90,26 @@ def get_toxicity_title(coins: int) -> str:
 
 def stats_text(user: types.User) -> str:
     u = get_user(user)
-    title = get_toxicity_title(u["coins"])
+    title = get_toxicity_title(u)
+    badge_str = " | 💬 Золотой значок активен" if u["has_badge"] else ""
+    shield_str = f"\n🛡 Щитов от слива в дуэлях: {u['shield_count']}" if u["shield_count"] > 0 else ""
     return (
-        f"📊 Твоя игровая статистика, {u['name']}\n\n"
+        f"📊 Твоя игровая статистика, {u['name']}{badge_str}\n\n"
         f"🪙 Баланс коинов: {u['coins']}\n"
-        f"🏆 Твой титул: {title}\n"
+        f"🏆 Твой титул: {title}{shield_str}\n"
         f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n\n"
         f"💡 <i>Всё происходит прямо в боте по кнопкам, спамить реальными комментариями в канале не нужно!</i>"
     )
 
 
 def top_text() -> str:
-    rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC").fetchall()
+    rows = db.execute("SELECT name, coins, has_title FROM users ORDER BY coins DESC").fetchall()
     if not rows:
         return "Пока никто не заработал коины"
-    lines = [f"{i + 1}. {r['name']} — {r['coins']} коинов" for i, r in enumerate(rows)]
+    lines = []
+    for i, r in enumerate(rows):
+        prefix = "👑 " if r["has_title"] else ""
+        lines.append(f"{i + 1}. {prefix}{r['name']} — {r['coins']} коинов")
     return "🏆 Общий рейтинг комментаторов:\n" + "\n".join(lines)
 
 
@@ -113,7 +124,7 @@ NEWS_JOKES = [
     "📰 НОВОСТИ КАНАЛА:\n\nВ чате замечен странный тип: он прочитал все правила с первого раза и ничего не написал. Самый подозрительный элемент.",
     "📰 НОВОСТИ КАНАЛА:\n\nМестные тролли начали объединяться в профсоюзы. Требуют оплату коинами за каждую тонну вылитой желчи.",
     "📰 НОВОСТИ КАНАЛА:\n\nОдин из комментаторов попытался сдать бутылки, чтобы отыграться в дуэли, но его опередили более опытные коллеги.",
-    "📰 НОВОСТИ КАНАЛА:\n\nНовостей ноль, потому что админ ушел спать, а бот работает на честном слове и энергии терпил.",
+    "📰 НОВОСТИ КАНАЛА:\n\nНовости ноль, потому что админ ушел спать, а бот работает на честном слове и энергии терпил.",
     "📰 НОВОСТИ КАНАЛА:\n\nВзломали базу данных канала: оказалось, что 90% активности держатся на трех людях с бессонницей.",
     "📰 НОВОСТИ КАНАЛА:\n\nСамый активный комментатор недели получил в подарок бесплатный бан от нейросети.",
     "📰 НОВОСТИ КАНАЛА:\n\nПсихиатры бьют тревогу: игроки в дуэли начали разговаривать во сне фразами 'Принять вызов за 5 коинов'.",
@@ -155,13 +166,17 @@ def do_bonus(user: types.User) -> str:
             return f"{u['name']}, бонус уже получен! Жди еще {hours} ч. {mins} мин."
 
     delta = 10
+    # Проверка буста
+    if u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now:
+        delta *= 2
+
     new_coins = u["coins"] + delta
     db.execute("UPDATE users SET coins=?, last_bonus=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
-    return f"{u['name']}, ежедневный бонус принес +{delta} коинов! Баланс: {new_coins} 🪙"
+    boost_note = " (💥 х2 Буст активен!)" if delta > 10 else ""
+    return f"{u['name']}, ежедневный бонус принес +{delta} коинов!{boost_note} Баланс: {new_coins} 🪙"
 
 
-# Обновленная подработка: Вбросить тейк в комменты (50/50: +3 или -3)
 def do_work(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -173,13 +188,19 @@ def do_work(user: types.User) -> str:
             mins, _ = divmod(remainder, 60)
             return f"{u['name']}, ты уже вбрасывал тейк в комменты! Следующая попытка через {hours} ч. {mins} мин."
 
+    gain = 3
+    loss = 3
+    if u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now:
+        gain *= 2
+        loss *= 2
+
     success = random.random() < 0.5
     if success:
-        new_coins = u["coins"] + 3
-        msg = f"💬 Твой виртуальный тейк залетел в комментах на ура! Зрители оценили, получено **+3 коина**. Баланс: {new_coins} 🪙"
+        new_coins = u["coins"] + gain
+        msg = f"💬 Твой виртуальный тейк залетел в комментах на ура! Зрители оценили, получено **+{gain} коина**. Баланс: {new_coins} 🪙"
     else:
-        new_coins = u["coins"] - 3
-        msg = f"📉 Ты написал полный кринж в обсуждении, местные заминусили... Потеряно **-3 коина**. Баланс: {new_coins} 🪙"
+        new_coins = u["coins"] - loss
+        msg = f"📉 Ты написал полный кринж в обсуждении, местные заминусили... Потеряно **-{loss} коина**. Баланс: {new_coins} 🪙"
 
     db.execute("UPDATE users SET coins=?, last_work=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
@@ -243,8 +264,21 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "news", 
             "📰 Новости канала", 
-            "Свежие шутки и сводки из жизни комьюнити (30+ вариантов)", 
+            "Свежие шутки и сводки из жизни комьюнити", 
             get_news_text()
+        ),
+        article(
+            "shop",
+            "🛒 Магазин призов ПОРОГА",
+            "Потрать коины на эксклюзивные награды и привилегии",
+            "<b>🛒 Магазин призов канала ПОРОГ:</b>\n\nВыбирай товар по душе и прокачивай свой статус:",
+            kb(
+                ("🎬 Тема для ролика (500 🪙)", f"buy:{uid}:theme"),
+                ("👑 Титул «Властелин комментов» (250 🪙)", f"buy:{uid}:title"),
+                ("🛡 3 иммунитета от слива (150 🪙)", f"buy:{uid}:shield"),
+                ("🎟 Буст х2 на сутки (60 🪙)", f"buy:{uid}:boost"),
+                ("💬 Золотой значок тейков (300 🪙)", f"buy:{uid}:badge"),
+            )
         ),
         article(
             "bonus", 
@@ -304,6 +338,60 @@ async def on_work(c: types.CallbackQuery):
     await c.answer()
 
 
+# ---------- ОБРАБОТЧИК МАГАЗИНА ----------
+@dp.callback_query(F.data.startswith("buy:"))
+async def on_buy(c: types.CallbackQuery):
+    _, owner, item = c.data.split(":")
+    owner = int(owner)
+    if c.from_user.id != owner:
+        return await c.answer("Не твоя кнопка", show_alert=True)
+
+    u = get_user(c.from_user)
+    coins = u["coins"]
+
+    prices = {
+        "theme": 500,
+        "title": 250,
+        "shield": 150,
+        "boost": 60,
+        "badge": 300
+    }
+
+    price = prices.get(item, 0)
+    if coins < price:
+        return await c.answer(f"Недостаточно коинов! Нужно {price} 🪙", show_alert=True)
+
+    new_coins = coins - price
+
+    if item == "theme":
+        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+        db.commit()
+        await edit(c, f"🎉 **Успешная покупка!** Ты приобрел право предложить тему для нового ролика за 500 🪙.\n\nНапиши админу свою идею в личку или в комментарии, приложив подтверждение списания коинов!")
+    elif item == "title":
+        if u["has_title"]:
+            return await c.answer("У тебя уже куплен этот титул!", show_alert=True)
+        db.execute("UPDATE users SET coins=?, has_title=1 WHERE id=?", (new_coins, owner))
+        db.commit()
+        await edit(c, f"👑 **Поздравляем!** Титул **«Властелин комментов»** успешно приобретен и навсегда закреплен за тобой! Теперь ты выделен короной в общем рейтинге и статистике.")
+    elif item == "shield":
+        db.execute("UPDATE users SET coins=?, shield_count=shield_count+3 WHERE id=?", (new_coins, owner))
+        db.commit()
+        await edit(c, f"🛡 **Успешно!** К твоему профилю добавлено 3 защитных щита. Следующие 3 поражения в дуэлях не отнимут у тебя коины.")
+    elif item == "boost":
+        expiry = (datetime.datetime.now() + datetime.timedelta(days=1)).isoformat()
+        db.execute("UPDATE users SET coins=?, boost_until=? WHERE id=?", (new_coins, expiry, owner))
+        db.commit()
+        await edit(c, f"💥 **Буст активирован!** На ближайшие 24 часа ежедневный бонус приносит х2 коинов, а тейки дают удвоенный профит!")
+    elif item == "badge":
+        if u["has_badge"]:
+            return await c.answer("У тебя уже есть золотой значок!", show_alert=True)
+        db.execute("UPDATE users SET coins=?, has_badge=1 WHERE id=?", (new_coins, owner))
+        db.commit()
+        await edit(c, f"💬 **Стиль обновлен!** Золотой значок активен в твоем профиле и статистике.")
+
+    await c.answer()
+
+
 @dp.callback_query(F.data.startswith("duel:"))
 async def on_duel(c: types.CallbackQuery):
     _, owner, bet = c.data.split(":")
@@ -320,12 +408,21 @@ async def on_duel(c: types.CallbackQuery):
         return await c.answer("Недостаточно коинов для дуэли!", show_alert=True)
     
     winner, loser = random.choice([(a, b), (b, a)])
+    
+    # Проверка щита у проигравшего
+    if loser["shield_count"] > 0:
+        db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"]))
+        db.commit()
+        shield_msg = f" (но у {loser['name']} сработал щит 🛡, коины не списались!)"
+    else:
+        db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
+        shield_msg = ""
+
     db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
-    db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
     db.commit()
     
     add_news(f"🎯 Дуэльная бойня: {winner['name']} разнес мнение {loser['name']} и забрал {bet} 🪙!")
-    await edit(c, f"⚔️ В дуэли мнений победил {winner['name']} и забрал {bet} 🪙 у {loser['name']}!")
+    await edit(c, f"⚔️ В дуэли мнений победил {winner['name']} и забрал {bet} 🪙 у {loser['name']}!{shield_msg}")
     await c.answer()
 
 

@@ -12,6 +12,7 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
 )
+from aiohttp import web
 
 # ---------- НАСТРОЙКИ ----------
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
@@ -348,7 +349,6 @@ async def on_duel(c: types.CallbackQuery):
     if a is None:
         return await c.answer("Игрок не найден", show_alert=True)
     
-    # Разрешаем дуэли даже при минусовом балансе (или с ограничением)
     winner, loser = random.choice([(a, b), (b, a)])
     db.execute("UPDATE users SET size=size+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
     db.execute("UPDATE users SET size=size-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
@@ -370,7 +370,24 @@ async def start(m: types.Message):
     )
 
 
+# Веб-сервер для Render (чтобы веб-сервис не ругался на закрытые порты)
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async def web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+
 async def main():
+    # Запускаем параллельно веб-сервер и самого телеграм-бота
+    asyncio.create_task(web_server())
     await dp.start_polling(bot)
 
 

@@ -15,7 +15,7 @@ from aiogram.types import (
 from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
-DEFAULT_BET = 80  # Ставка по умолчанию теперь 80 коинов
+DEFAULT_BET = 5  # Базовая ставка теперь 5 коинов
 ADMIN_ID = 1642626687  # Твой ID
 
 bot = Bot(TOKEN)
@@ -254,11 +254,13 @@ async def inline_query_menu(q: types.InlineQuery):
     u = get_user(q.from_user)
     coins = u["coins"]
     text = q.query.strip()
+    
+    # Если игрок ввел число в инлайн-строке (например, "@бот 50"), то это ставка для дуэли
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
-    duel_markup = kb((f"Принять вызов ({bet} 🪙)", f"duel:{uid}:{bet}")) if coins > 0 else None
-    duel_title = f"🎯 Дуэль мнениями (ставка: {bet} коинов)"
-    duel_desc = "Сразись с другим игроком 1 на 1 на коины" if coins > 0 else "Дуэль заблокирована: нужен положительный баланс"
+    duel_markup = kb((f"⚔️ Принять вызов на {bet} 🪙", f"duel:{uid}:{bet}")) if coins > 0 else None
+    duel_title = f"🎯 Дуэль мнениями (ставка: {bet} 🪙)"
+    duel_desc = f"Вызови бойца на дуэль (ставка {bet} коинов). Напиши в поиске цифру, чтобы изменить ставку!" if coins > 0 else "Дуэль заблокирована: нужен положительный баланс"
 
     results = [
         article(
@@ -322,7 +324,12 @@ async def inline_query_menu(q: types.InlineQuery):
             "duel", 
             duel_title, 
             duel_desc, 
-            "Дуэль комментаторов!", 
+            (
+                f"🎯 <b>Дуэль мнений создана!</b>\n\n"
+                f"👤 Инициатор: {q.from_user.first_name}\n"
+                f"💰 Ставка: <b>{bet} 🪙</b>\n\n"
+                f"<i>Нажми кнопку ниже, чтобы принять вызов и испытать удачу!</i>"
+            ), 
             duel_markup
         ),
     ]
@@ -422,7 +429,7 @@ async def on_duel(c: types.CallbackQuery):
         return await c.answer("Игрок не найден", show_alert=True)
 
     if b["coins"] <= 0 or b["coins"] < bet:
-        return await c.answer("Недостаточно коинов для дуэли!", show_alert=True)
+        return await c.answer(f"Недостаточно коинов для дуэли! Нужно минимум {bet} 🪙", show_alert=True)
     
     winner, loser = random.choice([(a, b), (b, a)])
     
@@ -438,7 +445,7 @@ async def on_duel(c: types.CallbackQuery):
     db.commit()
     
     add_news(f"🎯 Дуэльная бойня: {winner['name']} разнес мнение {loser['name']} и забрал {bet} 🪙!")
-    await edit(c, f"⚔️ В дуэли мнений победил {winner['name']} и забрал {bet} 🪙 у {loser['name']}!{shield_msg}")
+    await edit(c, f"⚔️ В дуэли мнений (ставка: {bet} 🪙) победил {winner['name']} и забрал банк у {loser['name']}!{shield_msg}")
     await c.answer()
 
 

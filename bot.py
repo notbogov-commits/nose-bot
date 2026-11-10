@@ -161,6 +161,7 @@ def do_bonus(user: types.User) -> str:
     return f"{u['name']}, ежедневный бонус принес +{delta} коинов! Баланс: {new_coins} 🪙"
 
 
+# Обновленная подработка: Вбросить тейк в комменты (50/50: +3 или -3)
 def do_work(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -170,15 +171,15 @@ def do_work(user: types.User) -> str:
             timeLeft = datetime.timedelta(hours=6) - (now - last_dt)
             hours, remainder = divmod(int(timeLeft.total_seconds()), 3600)
             mins, _ = divmod(remainder, 60)
-            return f"{u['name']}, ты уже предлагал название ролика! Следующая попытка через {hours} ч. {mins} мин."
+            return f"{u['name']}, ты уже вбрасывал тейк в комменты! Следующая попытка через {hours} ч. {mins} мин."
 
     success = random.random() < 0.5
     if success:
         new_coins = u["coins"] + 3
-        msg = f"🎬 Твое название ролика зашло зрителям на ура! Тренд подхвачен, получено **+3 коина**. Баланс: {new_coins} 🪙"
+        msg = f"💬 Твой виртуальный тейк залетел в комментах на ура! Зрители оценили, получено **+3 коина**. Баланс: {new_coins} 🪙"
     else:
         new_coins = u["coins"] - 3
-        msg = f"📉 Ты предложил кринжовое название ролика, зрители не оценили и заминусили... Потеряно **-3 коина**. Баланс: {new_coins} 🪙"
+        msg = f"📉 Ты написал полный кринж в обсуждении, местные заминусили... Потеряно **-3 коина**. Баланс: {new_coins} 🪙"
 
     db.execute("UPDATE users SET coins=?, last_work=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
@@ -195,7 +196,6 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
-# ---------- ОБРАБОТЧИК КОММЕНТАРИЕВ И ТРИГГЕРА "!игра" ----------
 TEASERS = [
     "Много текста, а коины сами себя не заработают. Го в игру 👇",
     "Смотрю, эксперт в комментах нашелся. А в дуэли слабо победить? Проверь баланс 👇",
@@ -206,13 +206,11 @@ TEASERS = [
 
 @dp.message()
 async def handle_all_messages(message: types.Message):
-    # Игнорируем сообщения от самого бота
     if message.from_user and message.from_user.is_bot:
         return
 
     text_lower = message.text.lower() if message.text else ""
 
-    # Если пишут команду запуска игры
     if text_lower in ["!игра", "игра", "/game"]:
         welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -221,7 +219,6 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    # Рандомное подшучивание над обычными комментариями (шанс ~15%)
     if random.random() < 0.15 and message.from_user:
         teaser = random.choice(TEASERS)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -258,10 +255,10 @@ async def inline_query_menu(q: types.InlineQuery):
         ),
         article(
             "work", 
-            "🎬 Назвать выпуск ролика (раз в 6 часов)", 
-            "Шанс 50/50: зашедшее название (+3) или провал (-3)", 
-            "Предлагаю название ролика...",
-            kb(("Предложить название 🎬", f"work:{uid}"))
+            "💬 Вбросить тейк в комменты (раз в 6 часов)", 
+            "Шанс 50/50: зашедшее мнение (+3) или провал (-3)", 
+            "Вбрасываю тейк...",
+            kb(("Вбросить тейк 💬", f"work:{uid}"))
         ),
         article(
             "stats", 
@@ -314,7 +311,7 @@ async def on_duel(c: types.CallbackQuery):
     if c.from_user.id == owner:
         return await c.answer("Нельзя принять свой вызов", show_alert=True)
 
-    a = db.execute("SELECT * FROM users WHERE id=`, (owner,)).fetchone()
+    a = db.execute("SELECT * FROM users WHERE id=?", (owner,)).fetchone()
     b = get_user(c.from_user)
     if not a:
         return await c.answer("Игрок не найден", show_alert=True)

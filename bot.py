@@ -207,7 +207,6 @@ def do_work(user: types.User) -> str:
     return msg
 
 
-# Логика обмена между игроками с шуллерством (раз в час)
 def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> str:
     u = get_user(user)
     check_credit_timeout(u)
@@ -231,11 +230,9 @@ def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> st
     if user.id == target_id:
         return "Нельзя обмениваться самому с собой!"
 
-    # Проверка шуллерства (50 на 50)
     if is_scam:
         success_scam = random.random() < 0.5
         if success_scam:
-            # Обман удался: отдаем меньше (например, половину или 0), а себе оставляем
             stolen = amount // 2
             sender_new = u["size"] - stolen
             target_new = target["size"] + stolen
@@ -245,7 +242,6 @@ def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> st
             add_news(f"🃏 Дерзкий шуллер: {u['name']} обманул при обмене с {target['name']} и сэкономил см!")
             return f"🃏 {u['name']} попытался кинуть партнера... и шуллерство удалось! Ты отдал всего {stolen} см вместо {amount} см. Баланс: {sender_new} см."
         else:
-            # Спалился: сделка отменяется, штраф шуллеру
             penalty = 3
             sender_new = u["size"] - penalty
             db.execute("UPDATE users SET size=?, last_trade=? WHERE id=?", (sender_new, now.isoformat(), user.id))
@@ -253,7 +249,6 @@ def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> st
             add_news(f"🚨 Позор шуллеру: {u['name']} спалился при обмене с {target['name']} и получил штраф!")
             return f"🚨 Шуллера поймали за руку! Партнер раскусил обман, сделка отменена. Штраф за попытку аферы: -{penalty} см. Баланс: {sender_new} см."
     else:
-        # Честный обмен
         sender_new = u["size"] - amount
         target_new = target["size"] + amount
         db.execute("UPDATE users SET size=?, last_trade=? WHERE id=?", (sender_new, now.isoformat(), user.id))
@@ -262,7 +257,6 @@ def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> st
         return f"🤝 Честный обмен завершен! {u['name']} передал {amount} см игроку {target['name']}. Твой баланс: {sender_new} см."
 
 
-# Казино Рулетка
 def do_roulette(user: types.User, choice: str, bet: int) -> str:
     u = get_user(user)
     check_credit_timeout(u)
@@ -408,18 +402,14 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     results = [
-        # 1. Название и правила в самом верху (жирные заголовки, без звездочек)
         article("title", "🚨 ВЕЛИКИЙ НОСАТЫЙ ПУТЬ", "✨ Игра <b>«ВЕЛИКИЙ НОСАТЫЙ ПУТЬ»</b>\nВыберите нужное действие в меню ниже:"),
         article("rules", "📜 Правила игры", rules_text()),
-        
-        # 2. Основной движ (Новости, Вырастить, Подработка)
         article("news", "📰 Носатые новости", get_news_text()),
         article("grow", "👃 Вырастить нос (раз в сутки)", "Тяну нос...",
                 kb(("Вырастить 👃", f"grow:{uid}"))),
         article("work", "💼 Подработка (раз в 6 часов)", "Ищу подработку...",
                 kb(("Начать подработку 💼", f"work:{uid}"))),
         
-        # 3. Шуллерский обмен между игроками (кнопки с выбором суммы и шуллерства)
         article(
             "trade_menu",
             "🤝 Обмен и Шуллерство (раз в час)",
@@ -439,8 +429,6 @@ async def inline_query_menu(q: types.InlineQuery):
                 ]
             ])
         ),
-        
-        # 4. Казино: кнопка активна только при положительном балансе с выбором суммы (5, 10, 25, 50, 100, 1000)
     ]
 
     if current_size > 0:
@@ -472,7 +460,6 @@ async def inline_query_menu(q: types.InlineQuery):
             )
         )
 
-    # 5. Статистика, топы, дуэли и финансы
     results.extend([
         article("stats", "📊 Моя статистика", stats_text(q.from_user)),
         article("top", "🏆 Носатый топ", top_text()),
@@ -516,19 +503,15 @@ async def on_work(c: types.CallbackQuery):
     await c.answer()
 
 
-# Обработка шуллерского обмена
 @dp.callback_query(F.data.startswith("trade:"))
 async def on_trade(c: types.CallbackQuery):
     _, owner, amount, is_scam = c.data.split(":")
     if c.from_user.id != int(owner):
         return await c.answer("Это не твоя кнопка", show_alert=True)
     
-    u = get_user(c.from_user)
     amt = int(amount)
     scam = bool(int(is_scam))
 
-    # Для демонстрации в чате привязываем к первому попавшемуся партнеру или себе если один, 
-    # но сделаем автовыбор рандомного игрока из базы для примера обмена
     other_users = db.execute("SELECT id, name FROM users WHERE id != ?", (c.from_user.id,)).fetchall()
     if not other_users:
         return await c.answer("В игре пока нет других участников для обмена!", show_alert=True)
@@ -539,7 +522,6 @@ async def on_trade(c: types.CallbackQuery):
     await c.answer()
 
 
-# Шаг 1 в казино: выбор суммы ставки
 @dp.callback_query(F.data.startswith("casinobet:"))
 async def on_casino_bet(c: types.CallbackQuery):
     _, owner, bet_amt = c.data.split(":")
@@ -549,7 +531,7 @@ async def on_casino_bet(c: types.CallbackQuery):
     u = get_user(c.from_user)
     bet = int(bet_amt)
     if u["size"] < bet:
-        return await c.answer(f"Недостаточно Носатости! У тебя {u["size"]} см, а ставка {bet} см.", show_alert=True)
+        return await c.answer(f"Недостаточно Носатости! У тебя {u['size']} см, а ставка {bet} см.", show_alert=True)
 
     uid = c.from_user.id
     markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -561,7 +543,6 @@ async def on_casino_bet(c: types.CallbackQuery):
     await c.answer()
 
 
-# Шаг 2 в казино: запуск рулетки
 @dp.callback_query(F.data.startswith("roulette:"))
 async def on_roulette(c: types.CallbackQuery):
     _, owner, choice, bet = c.data.split(":")
@@ -639,7 +620,6 @@ async def on_duel(c: types.CallbackQuery):
     await c.answer()
 
 
-# Админ-команда для накрутки баланса
 @dp.message(Command("add"))
 async def admin_add_size(m: types.Message):
     if m.from_user.id != ADMIN_ID:
@@ -663,7 +643,6 @@ async def start(m: types.Message):
     await m.answer("👋 Привет! Это игра «ВЕЛИКИЙ НОСАТЫЙ ПУТЬ».\nНапиши `@имя_бота` в любом чате, чтобы открыть меню.")
 
 
-# Веб-сервер для Render Web Service
 async def handle(request):
     return web.Response(text="Bot is running!")
 

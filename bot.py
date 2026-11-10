@@ -16,7 +16,7 @@ from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
 DEFAULT_BET = 5
-ADMIN_ID = 9119538825
+ADMIN_ID = 1642626687  # Твой реальный ID
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
@@ -35,8 +35,7 @@ db.executescript(
         losses INTEGER DEFAULT 0,
         has_title INTEGER DEFAULT 0,
         shield_count INTEGER DEFAULT 0,
-        boost_until TEXT,
-        has_badge INTEGER DEFAULT 0
+        boost_until TEXT
     );
     CREATE TABLE IF NOT EXISTS news_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,10 +90,9 @@ def get_toxicity_title(u: sqlite3.Row) -> str:
 def stats_text(user: types.User) -> str:
     u = get_user(user)
     title = get_toxicity_title(u)
-    badge_str = " | 💬 Золотой значок активен" if u["has_badge"] else ""
     shield_str = f"\n🛡 Щитов от слива в дуэлях: {u['shield_count']}" if u["shield_count"] > 0 else ""
     return (
-        f"📊 Твоя игровая статистика, {u['name']}{badge_str}\n\n"
+        f"📊 Твоя игровая статистика, {u['name']}\n\n"
         f"🪙 Баланс коинов: {u['coins']}\n"
         f"🏆 Твой титул: {title}{shield_str}\n"
         f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n\n"
@@ -166,7 +164,6 @@ def do_bonus(user: types.User) -> str:
             return f"{u['name']}, бонус уже получен! Жди еще {hours} ч. {mins} мин."
 
     delta = 10
-    # Проверка буста
     if u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now:
         delta *= 2
 
@@ -270,14 +267,24 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "shop",
             "🛒 Магазин призов ПОРОГА",
-            "Потрать коины на эксклюзивные награды и привилегии",
-            "<b>🛒 Магазин призов канала ПОРОГ:</b>\n\nВыбирай товар по душе и прокачивай свой статус:",
+            "Потрать коины на эксклюзивные награды (от дорогих к доступным)",
+            (
+                "<b>🛒 Магазин призов канала ПОРОГ:</b>\n\n"
+                "Выбирай награду по душе:\n\n"
+                "1️⃣ <b>🎬 Предложить тему для ролика</b> — 500 🪙\n"
+                "<i>Главный лот: право предложить идею для расследования. Если тема подходит, админ снимет по ней видео!</i>\n\n"
+                "2️⃣ <b>👑 Титул «Властелин комментов»</b> — 250 🪙\n"
+                "<i>Элитный постоянный статус: выделяет тебя короной в рейтинге и профиле.</i>\n\n"
+                "3️⃣ <b>🛡 3 иммунитета от слива</b> — 150 🪙\n"
+                "<i>Защитные щиты: следующие 3 поражения в дуэлях не отнимут коины.</i>\n\n"
+                "4️⃣ <b>🎟 Буст х2 на сутки</b> — 50 🪙\n"
+                "<i>Удваивает ежедневный бонус и награду за вброс тейков на 24 часа.</i>"
+            ),
             kb(
                 ("🎬 Тема для ролика (500 🪙)", f"buy:{uid}:theme"),
                 ("👑 Титул «Властелин комментов» (250 🪙)", f"buy:{uid}:title"),
                 ("🛡 3 иммунитета от слива (150 🪙)", f"buy:{uid}:shield"),
-                ("🎟 Буст х2 на сутки (60 🪙)", f"buy:{uid}:boost"),
-                ("💬 Золотой значок тейков (300 🪙)", f"buy:{uid}:badge"),
+                ("🎟 Буст х2 на сутки (50 🪙)", f"buy:{uid}:boost"),
             )
         ),
         article(
@@ -353,8 +360,7 @@ async def on_buy(c: types.CallbackQuery):
         "theme": 500,
         "title": 250,
         "shield": 150,
-        "boost": 60,
-        "badge": 300
+        "boost": 50
     }
 
     price = prices.get(item, 0)
@@ -366,7 +372,21 @@ async def on_buy(c: types.CallbackQuery):
     if item == "theme":
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, f"🎉 **Успешная покупка!** Ты приобрел право предложить тему для нового ролика за 500 🪙.\n\nНапиши админу свою идею в личку или в комментарии, приложив подтверждение списания коинов!")
+        await edit(c, f"🎉 **Успешная покупка!** Ты приобрел право предложить тему для нового ролика за 500 🪙.\n\nАдмину уже отправлено уведомление о твоей покупке. Скоро он свяжется с тобой или жди ответа!")
+        
+        # Автоматическое уведомление тебе (админу) в личку
+        try:
+            user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"
+            admin_msg = (
+                f"🚨 **НОВАЯ ПОКУПКА ТЕМЫ ДЛЯ РОЛИКА!**\n\n"
+                f"👤 Пользователь: {user_link} (ID: <code>{c.from_user.id}</code>)\n"
+                f"🪙 Списано: 500 коинов\n\n"
+                f"<i>Напиши ему в личку, чтобы узнать его идею для видео!</i>"
+            )
+            await bot.send_message(ADMIN_ID, admin_msg, parse_mode="HTML")
+        except Exception as e:
+            print(f"Не удалось отправить уведомление админу: {e}")
+
     elif item == "title":
         if u["has_title"]:
             return await c.answer("У тебя уже куплен этот титул!", show_alert=True)
@@ -382,12 +402,6 @@ async def on_buy(c: types.CallbackQuery):
         db.execute("UPDATE users SET coins=?, boost_until=? WHERE id=?", (new_coins, expiry, owner))
         db.commit()
         await edit(c, f"💥 **Буст активирован!** На ближайшие 24 часа ежедневный бонус приносит х2 коинов, а тейки дают удвоенный профит!")
-    elif item == "badge":
-        if u["has_badge"]:
-            return await c.answer("У тебя уже есть золотой значок!", show_alert=True)
-        db.execute("UPDATE users SET coins=?, has_badge=1 WHERE id=?", (new_coins, owner))
-        db.commit()
-        await edit(c, f"💬 **Стиль обновлен!** Золотой значок активен в твоем профиле и статистике.")
 
     await c.answer()
 
@@ -409,9 +423,8 @@ async def on_duel(c: types.CallbackQuery):
     
     winner, loser = random.choice([(a, b), (b, a)])
     
-    # Проверка щита у проигравшего
     if loser["shield_count"] > 0:
-        db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"]))
+        db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"],))
         db.commit()
         shield_msg = f" (но у {loser['name']} сработал щит 🛡, коины не списались!)"
     else:

@@ -66,18 +66,22 @@ def kb(*buttons: tuple[str, str]) -> InlineKeyboardMarkup:
     )
 
 
+# Проверка просрочки кредита с прогрессивным штрафом (+5 см за каждые просроченные сутки)
 def check_credit_timeout(u: sqlite3.Row):
     if u["debt"] > 0 and u["debt_time"]:
         debt_dt = datetime.datetime.fromisoformat(u["debt_time"])
-        if datetime.datetime.now() > debt_dt:
-            new_size = u["size"] - u["debt"]
-            db.execute(
-                "UPDATE users SET size=?, debt=0, debt_time=NULL WHERE id=?",
-                (new_size, u["id"])
-            )
-            db.commit()
-            return True
-    return False
+        now = datetime.datetime.now()
+        if now > debt_dt:
+            overdue_duration = now - debt_dt
+            extra_days = int(overdue_duration.total_seconds() // 86400) + 1
+            total_current_debt = CREDIT_DEBT + (extra_days - 1) * 5
+            
+            if total_current_debt > u["debt"]:
+                db.execute(
+                    "UPDATE users SET debt=? WHERE id=?",
+                    (total_current_debt, u["id"])
+                )
+                db.commit()
 
 
 def do_grow(user: types.User) -> str:
@@ -142,11 +146,14 @@ def do_credit(user: types.User) -> str:
         (CREDIT_AMOUNT, CREDIT_DEBT, due_time.isoformat(), now.isoformat(), user.id),
     )
     db.commit()
-    return f"{u['name']} взял кредит: +{CREDIT_AMOUNT} см. Вернуть нужно {CREDIT_DEBT} см ровно за 24 часа, иначе нос уменьшится!"
+    return f"{u['name']} взял кредит: +{CREDIT_AMOUNT} см. Вернуть нужно {CREDIT_DEBT} см ровно за 24 часа! За каждый просроченный день долг будет расти на +5 см."
 
 
 def do_pay_credit(user: types.User) -> str:
     u = get_user(user)
+    check_credit_timeout(u)
+    u = get_user(user)
+
     if u["debt"] == 0:
         return f"{u['name']}, у тебя нет активных долгов."
     
@@ -227,7 +234,7 @@ def rules_text() -> str:
     return (
         "📜 ПРАВИЛА ИГРЫ:\n\n"
         "1. 👃 **Вырастить нос:** можно раз в сутки (24 часа).\n"
-        "2. 💳 **Кредит:** дает +10 см, вернуть нужно 15 см за 24 часа.\n"
+        "2. 💳 **Кредит:** дает +10 см, вернуть нужно 15 см за 24 часа. За каждые просроченные сутки долг растет еще на +5 см!\n"
         "3. 💸 **Вернуть кредит:** досрочно через кнопку в меню.\n"
         "4. 📢 **Банкротство:** сброс долгов при отрицательном балансе (1 раз).\n"
         "5. 🎯 **Дуэли:** соревнуйся с другими игроками на сантиметры."
@@ -243,6 +250,7 @@ def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultAr
     )
 
 
+# ---------- ЛОГИЧЕСКИ ВЫСТРОЕННОЕ ИНЛАЙН-МЕНЮ ----------
 @dp.inline_query()
 async def inline_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -250,23 +258,29 @@ async def inline_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     results = [
+        # 1. Основное действие
         article("grow", "👃 Вырастить нос (раз в сутки)", "Тяну нос...",
                 kb(("Вырастить 👃", f"grow:{uid}"))),
+        # 2. Личное
+        article("stats", "📊 Моя статистика", stats_text(q.from_user)),
+        # 3. Рейтинги / Топы
         article("top", "🏆 Топ носов", top_text()),
         article("topwins", "⚔️ Топ дуэлянтов", top_wins_text()),
+        # 4. Активность (Дуэли)
+        article(
+            "duel",
+            f"🎯 Дуэль (ставка: {bet} см)",
+            f"{q.from_user.first_name} вызывает на дуэль! Ставка: {bet} см",
+            kb((f"Принять вызов ({bet} см)", f"duel:{uid}:{bet}"))),
+        # 5. Финансы и долги
         article("credit", "💳 Взять кредит (+10 см)", "Беру кредит...",
                 kb(("Взять кредит", f"credit:{uid}"))),
         article("pay_credit", "💸 Вернуть кредит", "Возвращаю кредит...",
                 kb(("Вернуть долг", f"paycredit:{uid}"))),
         article("bankrupt", "📢 Объявить банкротство", "Оформляю банкротство...",
                 kb(("Банкротство (- баланс)", f"bankrupt:{uid}"))),
-        article("stats", "📊 Моя статистика", stats_text(q.from_user)),
+        # 6. Справочная информация
         article("rules", "📜 Правила игры", rules_text()),
-        article(
-            "duel",
-            f"🎯 Дуэль (ставка: {bet} см)",
-            f"{q.from_user.first_name} вызывает на дуэль! Ставка: {bet} см",
-            kb((f"Принять вызов ({bet} см)", f"duel:{uid}:{bet}"))),
     ]
     if text.lower() in PROMOS:
         results.insert(
@@ -310,7 +324,7 @@ async def on_pay_credit(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("bankrupt:"))
 async def on_bankrupt(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("This is not your button", show_alert=True)
+        return await c.answer("Это не твоя кнопка", show_alert=True)
     await edit(c, do_bankrupt(c.from_user))
     await c.answer()
 
@@ -352,7 +366,6 @@ async def start(m: types.Message):
     await m.answer("👋 Привет! Это бот носатых рекордов.\nНапиши `@имя_бота` в любом чате, чтобы открыть меню.")
 
 
-# Веб-сервер, чтобы Render был доволен открытым портом на бесплатном Web Service
 async def handle(request):
     return web.Response(text="Bot is running!")
 

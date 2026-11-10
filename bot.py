@@ -195,17 +195,39 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
-# ---------- МИНИМАЛИСТИЧНЫЙ ОТВЕТ НА "!игра" ----------
-@dp.message(F.text.lower().in_(["!игра", "игра", "/game"]))
-async def cmd_game_trigger(message: types.Message):
-    welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
-    
-    # Кнопка с правильным вызовом инлайн-меню через switch_inline_query_current_chat
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
-    ])
-    
-    await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+# ---------- ОБРАБОТЧИК КОММЕНТАРИЕВ И ТРИГГЕРА "!игра" ----------
+TEASERS = [
+    "Много текста, а коины сами себя не заработают. Го в игру 👇",
+    "Смотрю, эксперт в комментах нашелся. А в дуэли слабо победить? Проверь баланс 👇",
+    "Хватит душнить, лучше открой игру и подними коинов 👇",
+    "Красиво пишешь, а в общем рейтинге на каком месте? Жми 👇",
+    "Админ одобряет этот высер, но в игре было бы интереснее. Залетай 👇"
+]
+
+@dp.message()
+async def handle_all_messages(message: types.Message):
+    # Игнорируем сообщения от самого бота
+    if message.from_user and message.from_user.is_bot:
+        return
+
+    text_lower = message.text.lower() if message.text else ""
+
+    # Если пишут команду запуска игры
+    if text_lower in ["!игра", "игра", "/game"]:
+        welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
+        ])
+        await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
+    # Рандомное подшучивание над обычными комментариями (шанс ~15%)
+    if random.random() < 0.15 and message.from_user:
+        teaser = random.choice(TEASERS)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
+        ])
+        await message.reply(teaser, reply_markup=keyboard, parse_mode="HTML")
 
 
 @dp.inline_query()
@@ -292,7 +314,7 @@ async def on_duel(c: types.CallbackQuery):
     if c.from_user.id == owner:
         return await c.answer("Нельзя принять свой вызов", show_alert=True)
 
-    a = db.execute("SELECT * FROM users WHERE id=?", (owner,)).fetchone()
+    a = db.execute("SELECT * FROM users WHERE id=`, (owner,)).fetchone()
     b = get_user(c.from_user)
     if not a:
         return await c.answer("Игрок не найден", show_alert=True)

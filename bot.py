@@ -38,7 +38,7 @@ db.executescript(
         size INTEGER DEFAULT 1,
         last_grow TEXT,
         last_work TEXT,
-        last_scam TEXT,
+        last_trade TEXT,
         debt INTEGER DEFAULT 0,
         debt_time TEXT,
         last_credit_time TEXT,
@@ -97,17 +97,18 @@ def add_news(text: str):
     db.commit()
 
 
+# Правила без звездочек с жирными тегами <b> и пунктом про просрочку
 def rules_text() -> str:
     return (
         "📜 ПРАВИЛА ИГРЫ:\n\n"
-        "1. 👃 **Вырастить нос:** Раз в сутки (от -5 до +10 см).\n"
-        "2. 💼 **Подработка:** Раз в 6 часов (риск плюс или минус см).\n"
-        "3. 🃏 **Шуллерский обмен:** Раз в 12 часов. Афера с риском обмануть систему или спалиться на штраф.\n"
-        "4. 🎰 **Казино:** Ставки Носатостью на Красное (2x), Чёрное (2x) или Зеро (14x).\n"
-        "5. 💳 **Кредит:** +10 см, вернуть 15 см за 24 часа.\n"
-        "6. ⚠️ **Просрочка:** За каждые лишние сутки долг растет еще на +5 см.\n"
-        "7. 📢 **Банкротство:** Списание долгов при минусе (1 раз).\n"
-        "8. 🎯 **Дуэли:** Ставки сантиметрами против игроков."
+        "1. 👃 <b>Вырастить нос:</b> Раз в сутки (от -5 до +10 см).\n"
+        "2. 💼 <b>Подработка:</b> Раз в 6 часов (риск плюс или минус см).\n"
+        "3. 🤝 <b>Обмен и Шуллерство:</b> Раз в час можно передать см другому игроку. Можно включить шуллерство (шанс 50/50 обмануть и забрать больше или спалиться и отменить сделку).\n"
+        "4. 🎰 <b>Казино:</b> Ставки от своего баланса на Красное (2x), Чёрное (2x) или Зеро (14x).\n"
+        "5. 💳 <b>Кредит:</b> +10 см, вернуть 15 см за 24 часа.\n"
+        "6. ⚠️ <b>Просрочка:</b> Если не вернуть кредит ровно за сутки, долг автоматически увеличивается еще на +5 см за каждые просроченные сутки!\n"
+        "7. 📢 <b>Банкротство:</b> Списание долгов при минусе (1 раз).\n"
+        "8. 🎯 <b>Дуэли:</b> Ставки сантиметрами против игроков."
     )
 
 
@@ -139,7 +140,6 @@ def top_wins_text() -> str:
     return "⚔️ Топ Носатых дуэлянтов:\n" + "\n".join(lines)
 
 
-# Игровые действия
 def do_grow(user: types.User) -> str:
     u = get_user(user)
     check_credit_timeout(u)
@@ -207,49 +207,69 @@ def do_work(user: types.User) -> str:
     return msg
 
 
-def do_scam(user: types.User) -> str:
+# Логика обмена между игроками с шуллерством (раз в час)
+def do_trade(user: types.User, target_id: int, amount: int, is_scam: bool) -> str:
     u = get_user(user)
     check_credit_timeout(u)
     u = get_user(user)
 
     now = datetime.datetime.now()
-    if u["last_scam"]:
-        last_scam_dt = datetime.datetime.fromisoformat(u["last_scam"])
-        if now - last_scam_dt < datetime.timedelta(hours=12):
-            timeLeft = datetime.timedelta(hours=12) - (now - last_scam_dt)
-            hours, remainder = divmod(int(timeLeft.total_seconds()), 3600)
-            minutes, _ = divmod(remainder, 60)
-            return f"{u['name']}, шуллерское чутье молчит. Жди еще {hours} ч. {minutes} мин."
+    if u["last_trade"]:
+        last_dt = datetime.datetime.fromisoformat(u["last_trade"])
+        if now - last_dt < datetime.timedelta(hours=1):
+            timeLeft = datetime.timedelta(hours=1) - (now - last_dt)
+            mins = int(timeLeft.total_seconds() // 60)
+            return f"{u['name']}, обмен доступен раз в час! Подожди еще {mins} мин."
 
-    roll = random.random()
-    if roll < 0.40:
-        gain = random.randint(5, 8)
-        size = u["size"] + gain
-        msg = f"🃏 {u['name']} провел дерзкую шуллерскую аферу! +{gain} см Носатости. Теперь: {size} см"
-        add_news(f"🚨 Шуллерский прорыв: {u['name']} обвел систему вокруг пальца и поднял +{gain} см!")
-    elif roll < 0.75:
-        gain = random.randint(2, 3)
-        size = u["size"] + gain
-        msg = f"🤝 {u['name']} провел честный обмен. +{gain} см. Теперь: {size} см"
+    if u["size"] < amount:
+        return f"{u['name']}, у тебя нет столько сантиметров для обмена ({u['size']} из {amount} см)!"
+
+    target = db.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return "Игрок-получатель не найден в базе игры."
+
+    if user.id == target_id:
+        return "Нельзя обмениваться самому с собой!"
+
+    # Проверка шуллерства (50 на 50)
+    if is_scam:
+        success_scam = random.random() < 0.5
+        if success_scam:
+            # Обман удался: отдаем меньше (например, половину или 0), а себе оставляем
+            stolen = amount // 2
+            sender_new = u["size"] - stolen
+            target_new = target["size"] + stolen
+            db.execute("UPDATE users SET size=?, last_trade=? WHERE id=?", (sender_new, now.isoformat(), user.id))
+            db.execute("UPDATE users SET size=? WHERE id=?", (target_new, target_id))
+            db.commit()
+            add_news(f"🃏 Дерзкий шуллер: {u['name']} обманул при обмене с {target['name']} и сэкономил см!")
+            return f"🃏 {u['name']} попытался кинуть партнера... и шуллерство удалось! Ты отдал всего {stolen} см вместо {amount} см. Баланс: {sender_new} см."
+        else:
+            # Спалился: сделка отменяется, штраф шуллеру
+            penalty = 3
+            sender_new = u["size"] - penalty
+            db.execute("UPDATE users SET size=?, last_trade=? WHERE id=?", (sender_new, now.isoformat(), user.id))
+            db.commit()
+            add_news(f"🚨 Позор шуллеру: {u['name']} спалился при обмене с {target['name']} и получил штраф!")
+            return f"🚨 Шуллера поймали за руку! Партнер раскусил обман, сделка отменена. Штраф за попытку аферы: -{penalty} см. Баланс: {sender_new} см."
     else:
-        lost = 5
-        size = u["size"] - lost
-        msg = f"🚨 Шуллера поймали за руку во время обмена! Штраф -{lost} см. Теперь: {size} см"
-        add_news(f"💥 Позор на черном рынке: {u['name']} попался на шуллерстве и потерял {lost} см!")
+        # Честный обмен
+        sender_new = u["size"] - amount
+        target_new = target["size"] + amount
+        db.execute("UPDATE users SET size=?, last_trade=? WHERE id=?", (sender_new, now.isoformat(), user.id))
+        db.execute("UPDATE users SET size=? WHERE id=?", (target_new, target_id))
+        db.commit()
+        return f"🤝 Честный обмен завершен! {u['name']} передал {amount} см игроку {target['name']}. Твой баланс: {sender_new} см."
 
-    db.execute("UPDATE users SET size=?, last_scam=? WHERE id=?", (size, now.isoformat(), user.id))
-    db.commit()
-    return msg
 
-
-# Казино Рулетка логика
+# Казино Рулетка
 def do_roulette(user: types.User, choice: str, bet: int) -> str:
     u = get_user(user)
     check_credit_timeout(u)
     u = get_user(user)
 
     if u["size"] < bet:
-        return f"{u['name']}, у тебя недостаточно Носатости для ставки ({u['size']} из {bet} см)!"
+        return f"{u['name']}, недостаточно Носатости для ставки ({u['size']} из {bet} см)!"
 
     roll_num = random.randint(0, 36)
     if roll_num == 0:
@@ -275,10 +295,10 @@ def do_roulette(user: types.User, choice: str, bet: int) -> str:
         payout = bet * 14
 
     if won:
-        new_size = u["size"] + bet * (payout // bet - 1)
-        msg = f"🎰 Рулетка крутанулась! Выпало: {res_text}.\n🎉 Поздравляем, {u['name']} сорвал куш и выиграл +{bet * (payout // bet - 1)} см Носатости!"
-        if bet >= 10 or payout >= 50:
-            add_news(f"🏆 Крупный выигрыш в казино: {u['name']} поднял сразу {payout} см на рулетке!")
+        new_size = u["size"] + (payout - bet)
+        msg = f"🎰 Рулетка крутанулась! Выпало: {res_text}.\n🎉 Поздравляем, {u['name']} сорвал куш и выиграл +{payout - bet} см Носатости!"
+        if bet >= 25 or payout >= 100:
+            add_news(f"🏆 Крупный куш в казино: {u['name']} поднял {payout} см на рулетке!")
     else:
         new_size = u["size"] - bet
         msg = f"🎰 Рулетка крутанулась! Выпало: {res_text}.\n💸 Увы, {u['name']} проиграл ставку и лишился -{bet} см Носатости."
@@ -320,7 +340,7 @@ def do_credit(user: types.User) -> str:
     db.execute("UPDATE users SET size=size+?, debt=?, debt_time=?, last_credit_time=? WHERE id=?",
                (CREDIT_AMOUNT, CREDIT_DEBT, due_time.isoformat(), now.isoformat(), user.id))
     db.commit()
-    return f"{u['name']} взял кредит (+{CREDIT_AMOUNT} см Носатости). Вернуть {CREDIT_DEBT} см за 24 часа!"
+    return f"{u['name']} взял кредит (+{CREDIT_AMOUNT} см). Вернуть {CREDIT_DEBT} см ровно за 24 часа! (Просрочка: +5 см каждые сутки)."
 
 
 def do_pay_credit(user: types.User) -> str:
@@ -370,59 +390,103 @@ def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultAr
     return InlineQueryResultArticle(
         id=id_,
         title=title,
-        input_message_content=InputTextMessageContent(message_text=text),
+        input_message_content=InputTextMessageContent(message_text=text, parse_mode="HTML"),
         reply_markup=markup,
     )
 
 
-# ---------- МЕНЮ БЕЗ ПОВТОРОВ ЭМОДЗИ С ЕДИНОЙ ВКЛАДКОЙ КАЗИНО ----------
+# ---------- ИНЛАЙН-МЕНЮ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
+    u = get_user(q.from_user)
+    check_credit_timeout(u)
+    u = get_user(q.from_user)
+    
+    current_size = u["size"]
     text = q.query.strip()
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     results = [
-        # 1. Название и правила в самом верху (уникальные эмодзи 🚨 и 📜)
-        article("title", "🚨 ВЕЛИКИЙ НОСАТЫЙ ПУТЬ", "✨ Игра «ВЕЛИКИЙ НОСАТЫЙ ПУТЬ»\nВыберите нужное действие в меню ниже:"),
+        # 1. Название и правила в самом верху (жирные заголовки, без звездочек)
+        article("title", "🚨 ВЕЛИКИЙ НОСАТЫЙ ПУТЬ", "✨ Игра <b>«ВЕЛИКИЙ НОСАТЫЙ ПУТЬ»</b>\nВыберите нужное действие в меню ниже:"),
         article("rules", "📜 Правила игры", rules_text()),
         
-        # 2. Новости, выращивание, подработка и обмен (эмодзи 📰, 👃, 💼, 🃏)
+        # 2. Основной движ (Новости, Вырастить, Подработка)
         article("news", "📰 Носатые новости", get_news_text()),
         article("grow", "👃 Вырастить нос (раз в сутки)", "Тяну нос...",
                 kb(("Вырастить 👃", f"grow:{uid}"))),
         article("work", "💼 Подработка (раз в 6 часов)", "Ищу подработку...",
                 kb(("Начать подработку 💼", f"work:{uid}"))),
-        article("scam", "🃏 Шуллерский обмен (раз в 12 часов)", "Провожу аферу...",
-                kb(("Рискнуть / Обменять 🃏", f"scam:{uid}"))),
         
-        # 3. Единая вкладка Казино с выбором исходов внутри (эмодзи 🎰)
+        # 3. Шуллерский обмен между игроками (кнопки с выбором суммы и шуллерства)
         article(
-            "casino_menu",
-            f"🎰 Носатое Казино (ставка: {bet} см)",
-            f"🎰 Добро пожаловать в Носатое Казино!\nВаша текущая ставка: {bet} см. Выберите исход ниже:",
+            "trade_menu",
+            "🤝 Обмен и Шуллерство (раз в час)",
+            f"🤝 <b>Черный рынок обмена</b>\nТвой баланс: {current_size} см.\nВыбери сумму для передачи другу:",
             InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"🔴 На Красное (2x)", callback_data=f"roulette:{uid}:red:{bet}")],
-                [InlineKeyboardButton(text=f"⚫️ На Черное (2x)", callback_data=f"roulette:{uid}:black:{bet}")],
-                [InlineKeyboardButton(text=f"🟢 На ЗЕРО (14x)", callback_data=f"roulette:{uid}:zero:{bet}")]
+                [
+                    InlineKeyboardButton(text="🎁 Передать 5 см", callback_data=f"trade:{uid}:5:0"),
+                    InlineKeyboardButton(text="🃏 Шуллер 5 см (50%)", callback_data=f"trade:{uid}:5:1")
+                ],
+                [
+                    InlineKeyboardButton(text="🎁 Передать 10 см", callback_data=f"trade:{uid}:10:0"),
+                    InlineKeyboardButton(text="🃏 Шуллер 10 см (50%)", callback_data=f"trade:{uid}:10:1")
+                ],
+                [
+                    InlineKeyboardButton(text="🎁 Передать 25 см", callback_data=f"trade:{uid}:25:0"),
+                    InlineKeyboardButton(text="🃏 Шуллер 25 см (50%)", callback_data=f"trade:{uid}:25:1")
+                ]
             ])
         ),
         
-        # 4. Статистика, топы и дуэли (эмодзи 📊, 🏆, ⚔️, 🎯)
+        # 4. Казино: кнопка активна только при положительном балансе с выбором суммы (5, 10, 25, 50, 100, 1000)
+    ]
+
+    if current_size > 0:
+        results.append(
+            article(
+                "casino_menu",
+                "🎰 Носатое Казино (выбор ставки)",
+                f"🎰 <b>Носатое Казино</b>\nТвой баланс: {current_size} см.\nВыберите сумму ставки для игры:",
+                InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="5 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:5"),
+                        InlineKeyboardButton(text="10 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:10"),
+                        InlineKeyboardButton(text="25 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:25")
+                    ],
+                    [
+                        InlineKeyboardButton(text="50 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:50"),
+                        InlineKeyboardButton(text="100 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:100"),
+                        InlineKeyboardButton(text="1000 см 🔴/⚫️/🟢", callback_data=f"casinobet:{uid}:1000")
+                    ]
+                ])
+            )
+        )
+    else:
+        results.append(
+            article(
+                "casino_disabled",
+                "🎰 Казино заблокировано (нужен баланс > 0)",
+                "🎰 Казино недоступно: у тебя нулевой или отрицательный баланс носатости! Сначала подзаработай или возьми кредит."
+            )
+        )
+
+    # 5. Статистика, топы, дуэли и финансы
+    results.extend([
         article("stats", "📊 Моя статистика", stats_text(q.from_user)),
         article("top", "🏆 Носатый топ", top_text()),
         article("topwins", "⚔️ Топ дуэлянтов", top_wins_text()),
         article("duel", f"🎯 Дуэль (ставка: {bet} см)", f"{q.from_user.first_name} вызывает на дуэль! Ставка: {bet} см",
                 kb((f"Принять вызов ({bet} см)", f"duel:{uid}:{bet}"))),
-        
-        # 5. Финансы: кредиты, долги, банкротство (эмодзи 💳, 💸, 📢)
         article("credit", "💳 Взять кредит (+10 см)", "Беру кредит...",
                 kb(("Взять кредит", f"credit:{uid}"))),
         article("pay_credit", "💸 Вернуть кредит", "Возвращаю кредит...",
                 kb(("Вернуть долг", f"paycredit:{uid}"))),
         article("bankrupt", "📢 Объявить банкротство", "Оформляю банкротство...",
                 kb(("Банкротство (- баланс)", f"bankrupt:{uid}"))),
-    ]
+    ])
+
     if text.lower() in PROMOS:
         results.insert(
             3,
@@ -433,7 +497,7 @@ async def inline_query_menu(q: types.InlineQuery):
 
 
 async def edit(c: types.CallbackQuery, text: str, markup=None):
-    await bot.edit_message_text(text, inline_message_id=c.inline_message_id, reply_markup=markup)
+    await bot.edit_message_text(text, inline_message_id=c.inline_message_id, reply_markup=markup, parse_mode="HTML")
 
 
 @dp.callback_query(F.data.startswith("grow:"))
@@ -452,25 +516,68 @@ async def on_work(c: types.CallbackQuery):
     await c.answer()
 
 
-@dp.callback_query(F.data.startswith("scam:"))
-async def on_scam(c: types.CallbackQuery):
-    if c.from_user.id != int(c.data.split(":")[1]):
+# Обработка шуллерского обмена
+@dp.callback_query(F.data.startswith("trade:"))
+async def on_trade(c: types.CallbackQuery):
+    _, owner, amount, is_scam = c.data.split(":")
+    if c.from_user.id != int(owner):
         return await c.answer("Это не твоя кнопка", show_alert=True)
-    await edit(c, do_scam(c.from_user))
+    
+    u = get_user(c.from_user)
+    amt = int(amount)
+    scam = bool(int(is_scam))
+
+    # Для демонстрации в чате привязываем к первому попавшемуся партнеру или себе если один, 
+    # но сделаем автовыбор рандомного игрока из базы для примера обмена
+    other_users = db.execute("SELECT id, name FROM users WHERE id != ?", (c.from_user.id,)).fetchall()
+    if not other_users:
+        return await c.answer("В игре пока нет других участников для обмена!", show_alert=True)
+    
+    target = random.choice(other_users)
+    result_msg = do_trade(c.from_user, target["id"], amt, scam)
+    await edit(c, result_msg)
     await c.answer()
 
 
+# Шаг 1 в казино: выбор суммы ставки
+@dp.callback_query(F.data.startswith("casinobet:"))
+async def on_casino_bet(c: types.CallbackQuery):
+    _, owner, bet_amt = c.data.split(":")
+    if c.from_user.id != int(owner):
+        return await c.answer("Это не твоя кнопка", show_alert=True)
+    
+    u = get_user(c.from_user)
+    bet = int(bet_amt)
+    if u["size"] < bet:
+        return await c.answer(f"Недостаточно Носатости! У тебя {u["size"]} см, а ставка {bet} см.", show_alert=True)
+
+    uid = c.from_user.id
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🔴 На Красное ({bet} см)", callback_data=f"roulette:{uid}:red:{bet}")],
+        [InlineKeyboardButton(text=f"⚫️ На Черное ({bet} см)", callback_data=f"roulette:{uid}:black:{bet}")],
+        [InlineKeyboardButton(text=f"🟢 На ЗЕРО 14x ({bet} см)", callback_data=f"roulette:{uid}:zero:{bet}")]
+    ])
+    await edit(c, f"🎰 <b>Казино</b>\nСтавка выбрана: <b>{bet} см</b>.\nТеперь выберите исход:", markup)
+    await c.answer()
+
+
+# Шаг 2 в казино: запуск рулетки
 @dp.callback_query(F.data.startswith("roulette:"))
 async def on_roulette(c: types.CallbackQuery):
     _, owner, choice, bet = c.data.split(":")
     if c.from_user.id != int(owner):
         return await c.answer("Это не твоя кнопка", show_alert=True)
     
+    u = get_user(c.from_user)
+    b = int(bet)
+    if u["size"] < b:
+        return await c.answer("Баланс изменился, недостаточно средств!", show_alert=True)
+
     for frame in ["🎡 Рулетка крутится... [🔴 Красное?]", "🎡 Рулетка крутится... [⚫️ Черное?]", "🎡 Рулетка крутится... [🟢 ЗЕРО? Лонг-драйв...]"]:
         await edit(c, frame)
         await asyncio.sleep(0.3)
 
-    result_msg = do_roulette(c.from_user, choice, int(bet))
+    result_msg = do_roulette(c.from_user, choice, b)
     await edit(c, result_msg)
     await c.answer()
 

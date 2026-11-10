@@ -16,7 +16,7 @@ from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAGOh9D2ok-bAP9u8kYi_NijCJr5gyNiK8g")
 BONUS_MIN, BONUS_MAX = -5, 10
-DEFAULT_BET = 10
+DEFAULT_BET = 5  # Начальная ставка дуэли — 5 коинов
 
 ADMIN_ID = 9119538825
 
@@ -66,15 +66,6 @@ def add_news(text: str):
     now = datetime.datetime.now().isoformat()
     db.execute("INSERT INTO news_log (text, time) VALUES (?, ?)", (text, now))
     db.commit()
-
-
-def rules_text() -> str:
-    return (
-        "📜 ПРАВИЛА ИГРЫ:\n\n"
-        "1. 🎁 <b>Ежедневный бонус:</b> Получить коины раз в сутки (от -5 до +10).\n"
-        "2. 💼 <b>Активность в чате:</b> Подработка раз в 6 часов (риск плюс или минус коины).\n"
-        "3. 🎯 <b>Дуэли мнениями:</b> Ставки коинами 1 на 1 против других комментаторов."
-    )
 
 
 def stats_text(user: types.User) -> str:
@@ -150,16 +141,17 @@ def do_work(user: types.User) -> str:
     return msg
 
 
-def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultArticle:
+def article(id_: str, title: str, description: str, text: str, markup=None) -> InlineQueryResultArticle:
     return InlineQueryResultArticle(
         id=id_,
         title=title,
+        description=description,
         input_message_content=InputTextMessageContent(message_text=text, parse_mode="HTML"),
         reply_markup=markup,
     )
 
 
-# ---------- УПРОЩЕННОЕ МЕНЮ БЕЗ ЛИШНЕГО ----------
+# ---------- МЕНЮ С ПОЯСНЕНИЯМИ И СТАВКОЙ 5 КОИНОВ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -169,18 +161,49 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     duel_markup = kb((f"Принять вызов ({bet} 🪙)", f"duel:{uid}:{bet}")) if coins > 0 else None
-    duel_title = f"🎯 Дуэль мнениями (ставка: {bet} коинов)" if coins > 0 else "🎯 Дуэль заблокирована (нет коинов)"
+    duel_title = f"🎯 Дуэль мнениями (ставка: {bet} коинов)"
+    duel_desc = "Сразись с другим комментатором 1 на 1 на коины" if coins > 0 else "Дуэль заблокирована: нужен положительный баланс"
 
     results = [
-        article("rules", "📜 Правила игры", rules_text()),
-        article("news", "📰 Новости канала", get_news_text()),
-        article("bonus", "🎁 Ежедневный бонус", "Получаю бонус...",
-                kb(("Забрать бонус 🎁", f"bonus:{uid}"))),
-        article("work", "💼 Активность в чате", "Пишу коммент...",
-                kb(("Написать коммент 💼", f"work:{uid}"))),
-        article("stats", "📊 Моя статистика", stats_text(q.from_user)),
-        article("top", "🏆 Топ-5 комментаторов", top_text()),
-        article("duel", duel_title, "Дуэль комментаторов!", duel_markup),
+        article(
+            "news", 
+            "📰 Новости канала", 
+            "Свежие сводки и юмор из жизни комьюнити", 
+            get_news_text()
+        ),
+        article(
+            "bonus", 
+            "🎁 Ежедневный бонус", 
+            "Получай от -5 до +10 коинов каждый день (раз в 24 часа)", 
+            "Получаю ежедневный бонус...",
+            kb(("Забрать бонус 🎁", f"bonus:{uid}"))
+        ),
+        article(
+            "work", 
+            "💼 Активность в чате", 
+            "Пиши комменты каждые 6 часов (риск получить или потерять коины)", 
+            "Пишу коммент...",
+            kb(("Написать коммент 💼", f"work:{uid}"))
+        ),
+        article(
+            "stats", 
+            "📊 Моя статистика", 
+            "Посмотреть свой баланс коинов и историю побед", 
+            stats_text(q.from_user)
+        ),
+        article(
+            "top", 
+            "🏆 Топ-5 комментаторов", 
+            "Рейтинг самых богатых и активных подписчиков канала", 
+            top_text()
+        ),
+        article(
+            "duel", 
+            duel_title, 
+            duel_desc, 
+            "Дуэль комментаторов!", 
+            duel_markup
+        ),
     ]
 
     await q.answer(results, cache_time=0, is_personal=True)

@@ -94,7 +94,6 @@ def stats_text(user: types.User) -> str:
     )
 
 
-# Общий рейтинг всех комментаторов (без ограничения в 5 человек)
 def top_text() -> str:
     rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC").fetchall()
     if not rows:
@@ -144,7 +143,6 @@ def get_news_text() -> str:
     return random.choice(NEWS_JOKES)
 
 
-# Ежедневный бонус: строго +10 коинов без отнимания
 def do_bonus(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -163,7 +161,6 @@ def do_bonus(user: types.User) -> str:
     return f"{u['name']}, ежедневный бонус принес +{delta} коинов! Баланс: {new_coins} 🪙"
 
 
-# Работа 50/50: придумываем название ролика (+3 или -3)
 def do_work(user: types.User) -> str:
     u = get_user(user)
     now = datetime.datetime.now()
@@ -198,18 +195,14 @@ def article(id_: str, title: str, description: str, text: str, markup=None) -> I
     )
 
 
+# ---------- МИНИМАЛИСТИЧНЫЙ ОТВЕТ НА "!игра" ----------
 @dp.message(F.text.lower().in_(["!игра", "игра", "/game"]))
 async def cmd_game_trigger(message: types.Message):
-    user = get_user(message.from_user)
-    welcome_text = (
-        f"💬 <b>Привет, {user['name']}! Это мини-игра для подписчиков канала.</b>\n\n"
-        f"Здесь можно собирать коины, крутить общий рейтинг и устраивать дуэли.\n"
-        f"⚠️ <i>Важно: писать реальные комментарии в канале для этого не нужно, вся игра работает прямо в боте по кнопкам!</i>\n\n"
-        f"👇 Нажми на кнопку ниже, чтобы открыть игровое меню:"
-    )
+    welcome_text = "🔥 Привет, подписчики ПОРОГА! Игра ждет тебя в кнопке ниже:"
     
+    # Кнопка с правильным вызовом инлайн-меню через switch_inline_query_current_chat
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Открыть меню игры", switch_inline_query="")]
+        [InlineKeyboardButton(text="🎮 Открыть игру", switch_inline_query_current_chat="")]
     ])
     
     await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")

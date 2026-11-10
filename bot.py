@@ -301,7 +301,7 @@ def article(id_: str, title: str, text: str, markup=None) -> InlineQueryResultAr
     )
 
 
-# ---------- ИНЛАЙН-МЕНЮ (ИГРА СВЕРХУ, ПРАВИЛА ВТОРЫМИ) ----------
+# ---------- ИНЛАЙН-МЕНЮ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -309,10 +309,10 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
 
     results = [
-        # 1. Название игры в самом верху (некликабельное)
-        article("title", "👃 «Великий Носатый Путь»", "✨ Добро пожаловать в игру «Великий Носатый Путь»! Выберите действие ниже:"),
+        # 1. Название капсом в самом верху
+        article("title", "👃 ВЕЛИКИЙ НОСАТЫЙ ПУТЬ", "✨ Игра «ВЕЛИКИЙ НОСАТЫЙ ПУТЬ»\nВыберите нужное действие в меню ниже:"),
         
-        # 2. Правила сразу на втором месте
+        # 2. Правила на втором месте
         article("rules", "📜 Правила игры", rules_text()),
         
         # 3. Основной геймплей
@@ -332,7 +332,7 @@ async def inline_query_menu(q: types.InlineQuery):
         article("duel", f"🎯 Дуэль (ставка: {bet} см)", f"{q.from_user.first_name} вызывает на дуэль! Ставка: {bet} см",
                 kb((f"Принять вызов ({bet} см)", f"duel:{uid}:{bet}"))),
         
-        # 6. Финансы (кредиты, долги, банкротство)
+        # 6. Финансы
         article("credit", "💳 Взять кредит (+10 см)", "Беру кредит...",
                 kb(("Взять кредит", f"credit:{uid}"))),
         article("pay_credit", "💸 Вернуть кредит", "Возвращаю кредит...",
@@ -396,7 +396,7 @@ async def on_pay_credit(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("bankrupt:"))
 async def on_bankrupt(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("This is not your button", show_alert=True)
+        return await c.answer("Это не твоя кнопка", show_alert=True)
     await edit(c, do_bankrupt(c.from_user))
     await c.answer()
 
@@ -405,7 +405,7 @@ async def on_bankrupt(c: types.CallbackQuery):
 async def on_promo(c: types.CallbackQuery):
     _, owner, code = c.data.split(":", 2)
     if c.from_user.id != int(owner):
-        return await c.answer("Это не твоя кнопка", show_alert=True)
+        return await c.answer("Это не твоя кнопка", show_script=True)
     await edit(c, do_promo(c.from_user, code))
     await c.answer()
 
@@ -435,7 +435,7 @@ async def on_duel(c: types.CallbackQuery):
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("👋 Привет! Это игра «Великий Носатый Путь».\nНапиши `@имя_бота` в любом чате, чтобы открыть меню.")
+    await m.answer("👋 Привет! Это игра «ВЕЛИКИЙ НОСАТЫЙ ПУТЬ».\nНапиши `@имя_бота` в любом чате, чтобы открыть меню.")
 
 
 # Веб-сервер для Render Web Service

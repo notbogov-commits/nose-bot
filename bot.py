@@ -416,12 +416,16 @@ async def on_shop_category(c: types.CallbackQuery):
     elif category == "stars":
         text = (
             "⭐ <b>Покупка коинов за Telegram Stars:</b>\n\n"
-            "Мгновенное ускорение прогресса в игре с помощью внутренней валюты Telegram.\n\n"
-            "• <b>+100 коинов</b> — <b>25 ⭐️</b>\n\n"
+            "Выберите подходящий пакет для быстрого пополнения баланса:\n\n"
+            "• <b>+4 коина</b> — <b>1 ⭐️</b>\n"
+            "• <b>+80 коинов</b> — <b>20 ⭐️</b>\n"
+            "• <b>+200 коинов</b> — <b>50 ⭐️</b> <i>(Выгодно!)</i>\n\n"
             f"💰 Ваш баланс: <b>{coins} 🪙</b>"
         )
         markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⭐ Купить +100 коинов (25 ⭐️)", callback_data=f"buy:{owner}:stars100")],
+            [InlineKeyboardButton(text="⭐ +4 коина (1 ⭐️)", callback_data=f"buy:{owner}:stars4")],
+            [InlineKeyboardButton(text="⭐ +80 коинов (20 ⭐️)", callback_data=f"buy:{owner}:stars80")],
+            [InlineKeyboardButton(text="⭐ +200 коинов (50 ⭐️)", callback_data=f"buy:{owner}:stars200")],
             [InlineKeyboardButton(text="◀️ Назад в магазин", callback_data=f"shop_cat:{owner}:main")]
         ])
     else:  # main
@@ -579,15 +583,46 @@ async def on_buy(c: types.CallbackQuery):
     coins = u["coins"]
     prices = {"theme": 5000, "mention": 2500, "tgprem": 1600, "shield": 150, "boost": 50}
 
-    if item == "stars100":
+    # Покупка коинов за Telegram Stars (3 пакета)
+    if item == "stars4":
         try:
             await bot.send_invoice(
                 chat_id=c.from_user.id,
-                title="Пополнение баланса",
-                description="Получите +100 коинов на игровой баланс бота ПОРОГ",
-                payload="buy_stars_100",
+                title="Пополнение баланса (+4 коина)",
+                description="Получите +4 коина на игровой баланс бота ПОРОГ",
+                payload="buy_stars_4",
                 currency="XTR",
-                prices=[types.LabeledPrice(label="100 коинов", amount=25)]
+                prices=[types.LabeledPrice(label="4 коина", amount=1)]
+            )
+            await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
+        except Exception:
+            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
+        return
+
+    if item == "stars80":
+        try:
+            await bot.send_invoice(
+                chat_id=c.from_user.id,
+                title="Пополнение баланса (+80 коинов)",
+                description="Получите +80 коинов на игровой баланс бота ПОРОГ",
+                payload="buy_stars_80",
+                currency="XTR",
+                prices=[types.LabeledPrice(label="80 коинов", amount=20)]
+            )
+            await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
+        except Exception:
+            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
+        return
+
+    if item == "stars200":
+        try:
+            await bot.send_invoice(
+                chat_id=c.from_user.id,
+                title="Пополнение баланса (+200 коинов)",
+                description="Получите +200 коинов на игровой баланс бота ПОРОГ",
+                payload="buy_stars_200",
+                currency="XTR",
+                prices=[types.LabeledPrice(label="200 коинов", amount=50)]
             )
             await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
         except Exception:
@@ -633,12 +668,22 @@ async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def on_successful_payment(message: types.Message):
-    if message.successful_payment.invoice_payload == "buy_stars_100":
-        user_id = message.from_user.id
-        get_user(message.from_user)
-        db.execute("UPDATE users SET coins=coins+100 WHERE id=?", (user_id,))
+    payload = message.successful_payment.invoice_payload
+    user_id = message.from_user.id
+    get_user(message.from_user)
+
+    if payload == "buy_stars_4":
+        db.execute("UPDATE users SET coins=coins+4 WHERE id=?", (user_id,))
         db.commit()
-        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+100 коинов</b> на баланс.", parse_mode="HTML")
+        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+4 коина</b> на баланс.", parse_mode="HTML")
+    elif payload == "buy_stars_80":
+        db.execute("UPDATE users SET coins=coins+80 WHERE id=?", (user_id,))
+        db.commit()
+        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+80 коинов</b> на баланс.", parse_mode="HTML")
+    elif payload == "buy_stars_200":
+        db.execute("UPDATE users SET coins=coins+200 WHERE id=?", (user_id,))
+        db.commit()
+        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+200 коинов</b> на баланс.", parse_mode="HTML")
 
 
 # ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------

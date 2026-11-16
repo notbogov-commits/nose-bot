@@ -24,7 +24,7 @@ ADMIN_ID = 1642626687  # Твой ID
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-# Словарь для защиты от спама (анти-кликер для кнопок)
+# Словарь для защиты от спама
 last_action_time = {}
 
 # Инициализация базы данных
@@ -268,14 +268,8 @@ async def inline_query_menu(q: types.InlineQuery):
     coins = u["coins"]
     text = q.query.strip()
 
-    max_other_coins = db.execute("SELECT MAX(coins) as m FROM users WHERE id != ?", (uid,)).fetchone()["m"] or 0
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
     bet = min(bet, MAX_CASINO_BET)
-
-    if coins < bet:
-        duel_markup = None
-    else:
-        duel_markup = kb((f"⚔️ Принять вызов ({bet} 🪙)", f"duel:{uid}:{bet}"))
 
     results = [
         article(
@@ -583,50 +577,28 @@ async def on_buy(c: types.CallbackQuery):
     coins = u["coins"]
     prices = {"theme": 5000, "mention": 2500, "tgprem": 1600, "shield": 150, "boost": 50}
 
-    # Покупка коинов за Telegram Stars (3 пакета)
-    if item == "stars4":
-        try:
-            await bot.send_invoice(
-                chat_id=c.from_user.id,
-                title="Пополнение баланса (+4 коина)",
-                description="Получите +4 коина на игровой баланс бота ПОРОГ",
-                payload="buy_stars_4",
-                currency="XTR",
-                prices=[types.LabeledPrice(label="4 коина", amount=1)]
-            )
-            await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
-        except Exception:
-            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
-        return
+    # Пакеты пополнения за Telegram Stars
+    payload_map = {
+        "stars4": ("Пополнение баланса (+4 коина)", "buy_stars_4", 4, 1),
+        "stars80": ("Пополнение баланса (+80 коинов)", "buy_stars_80", 80, 20),
+        "stars200": ("Пополнение баланса (+200 коинов)", "buy_stars_200", 200, 50)
+    }
 
-    if item == "stars80":
+    if item in payload_map:
+        title, payload, _, amount_stars = payload_map[item]
         try:
             await bot.send_invoice(
                 chat_id=c.from_user.id,
-                title="Пополнение баланса (+80 коинов)",
-                description="Получите +80 коинов на игровой баланс бота ПОРОГ",
-                payload="buy_stars_80",
+                title=title,
+                description="Покупка игровой валюты в боте ПОРОГ",
+                payload=payload,
                 currency="XTR",
-                prices=[types.LabeledPrice(label="80 коинов", amount=20)]
+                prices=[types.LabeledPrice(label=title, amount=amount_stars)]
             )
-            await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
-        except Exception:
-            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
-        return
-
-    if item == "stars200":
-        try:
-            await bot.send_invoice(
-                chat_id=c.from_user.id,
-                title="Пополнение баланса (+200 коинов)",
-                description="Получите +200 коинов на игровой баланс бота ПОРОГ",
-                payload="buy_stars_200",
-                currency="XTR",
-                prices=[types.LabeledPrice(label="200 коинов", amount=50)]
-            )
-            await c.answer("Счет на оплату отправлен в личные сообщения!", show_alert=True)
-        except Exception:
-            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
+            await c.answer("Счет на оплату отправлен в личные сообщения с ботом!", show_alert=True)
+        except Exception as e:
+            print(f"Ошибка отправки инвойса: {e}")
+            await c.answer("⚠️ Сначала напишите боту в личные сообщения (/start), чтобы получить счет!", show_alert=True)
         return
 
     price = prices.get(item, 0)
@@ -668,22 +640,30 @@ async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def on_successful_payment(message: types.Message):
-    payload = message.successful_payment.invoice_payload
+    payment = message.successful_payment
+    payload = payment.invoice_payload
     user_id = message.from_user.id
+    
+    # Гарантируем наличие пользователя в базе данных
     get_user(message.from_user)
 
+    coins_to_add = 4
     if payload == "buy_stars_4":
-        db.execute("UPDATE users SET coins=coins+4 WHERE id=?", (user_id,))
-        db.commit()
-        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+4 коина</b> на баланс.", parse_mode="HTML")
+        coins_to_add = 4
     elif payload == "buy_stars_80":
-        db.execute("UPDATE users SET coins=coins+80 WHERE id=?", (user_id,))
-        db.commit()
-        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+80 коинов</b> на баланс.", parse_mode="HTML")
+        coins_to_add = 80
     elif payload == "buy_stars_200":
-        db.execute("UPDATE users SET coins=coins+200 WHERE id=?", (user_id,))
-        db.commit()
-        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+200 коинов</b> на баланс.", parse_mode="HTML")
+        coins_to_add = 200
+
+    # Начисление коинов в базу данных
+    db.execute("UPDATE users SET coins = coins + ? WHERE id = ?", (coins_to_add, user_id))
+    db.commit()
+
+    # Отправка подтверждения об успешном пополнении
+    await message.answer(
+        f"⭐️ <b>Оплата прошла успешно!</b>\nВам зачислено <b>+{coins_to_add} 🪙</b> на игровой баланс[cite: 4].", 
+        parse_mode="HTML"
+    )
 
 
 # ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------

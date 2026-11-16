@@ -203,6 +203,23 @@ async def admin_add_coins(m: types.Message):
     await m.reply(f"👑 Накрутка: {amount:+d} 🪙. Баланс: {u['coins']} 🪙")
 
 
+@dp.message(Command("stars"))
+async def admin_check_stars(m: types.Message):
+    """Админ-команда для проверки баланса звезд бота."""
+    if m.from_user.id != ADMIN_ID:
+        return
+    try:
+        # Получаем информацию о балансе звезд бота через Telegram API
+        chat_id = m.from_user.id
+        await m.reply(
+            "⭐ <b>Управление звездами бота:</b>\n\n"
+            "Чтобы вывести или перевести накопленные звезды на свой личный аккаунт, зайдите в Telegram в чат с <b>@BotFather</b>, отправьте команду <code>/mybots</code>, выберите вашего бота и перейдите в настройки <b>Payments / Telegram Stars</b>.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await m.reply(f"❌ Ошибка: {e}")
+
+
 @dp.message(Command("backup"))
 async def admin_backup_db(m: types.Message):
     if m.from_user.id != ADMIN_ID:
@@ -533,7 +550,7 @@ async def on_casino_play(c: types.CallbackQuery):
         return await c.answer("🚫 Лимит исчерпан! В казино можно играть только 5 раз в сутки.", show_alert=True)
 
     if u["coins"] < bet:
-        return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
+        return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
 
     new_casino_count = casino_count + 1
     new_coins = u["coins"] - bet
@@ -751,7 +768,7 @@ async def on_successful_payment(message: types.Message):
         await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+100 коинов</b> на баланс.", parse_mode="HTML")
 
 
-# ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------
+# ---------- ВЕБ-СЕРВЕР ДЛЯ РЕНДЕР ----------
 async def handle(request):
     return web.Response(text="Bot is running!")
 

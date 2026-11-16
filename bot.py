@@ -289,7 +289,6 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    # Одноразовое приглашение в комментариях (строго 1 раз на человека навсегда)
     if message.message_thread_id:
         user_id = message.from_user.id
         first_name = message.from_user.first_name
@@ -353,6 +352,30 @@ async def inline_query_menu(q: types.InlineQuery):
             "📰 Новости канала",
             "Свежие шутки и сводки из жизни комьюнити",
             get_news_text(),
+        ),
+        article(
+            "casino",
+            "🎰 Казино ПОРОГА (Красное / Зеленое / Белое)",
+            "Ставь 5, 10 или 20 коинов и испытай удачу с честными шансами!",
+            (
+                "🎰 <b>Добро пожаловать в Казино ПОРОГА!</b>\n\n"
+                "Выбери размер ставки и цвет:\n"
+                "• 🔴 <b>Красное</b> (Шанс 45% | Выплата x2)\n"
+                "• 🟢 <b>Зеленое</b> (Шанс 10% | Джекпот x8)\n"
+                "• ⚪️ <b>Белое</b> (Шанс 45% | Выплата x2)\n\n"
+                "<i>Сделай свой выбор кнопками ниже! Твой баланс:</i> " + f"<b>{coins} 🪙</b>"
+            ),
+            kb(
+                ("🔴 Красное (5 🪙)", f"cas:{uid}:5:red"),
+                ("🟢 Зеленое - Джекпот (5 🪙)", f"cas:{uid}:5:green"),
+                ("⚪️ Белое (5 🪙)", f"cas:{uid}:5:white"),
+                ("🔴 Красное (10 🪙)", f"cas:{uid}:10:red"),
+                ("🟢 Зеленое - Джекпот (10 🪙)", f"cas:{uid}:10:green"),
+                ("⚪️ Белое (10 🪙)", f"cas:{uid}:10:white"),
+                ("🔴 Красное (20 🪙)", f"cas:{uid}:20:red"),
+                ("🟢 Зеленое - Джекпот (20 🪙)", f"cas:{uid}:20:green"),
+                ("⚪️ Белое (20 🪙)", f"cas:{uid}:20:white"),
+            )
         ),
         article(
             "shop",
@@ -432,8 +455,70 @@ async def on_bonus(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("work:"))
 async def on_work(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Ne твоя кнопка", show_alert=True)
     await edit(c, do_work(c.from_user))
+    await c.answer()
+
+
+# ---------- ЛОГИКА КАЗИНО ----------
+@dp.callback_query(F.data.startswith("cas:"))
+async def on_casino(c: types.CallbackQuery):
+    _, owner, bet_str, color = c.data.split(":")
+    owner = int(owner)
+    bet = int(bet_str)
+
+    if c.from_user.id != owner:
+        return await c.answer("Не твоя кнопка", show_alert=True)
+
+    u = get_user(c.from_user)
+    if u["coins"] < bet:
+        return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
+
+    # Шансы казино: Красное 45%, Белое 45%, Зеленое 10%
+    roll = random.random()
+    if roll < 0.45:
+        winning_color = "red"
+        emoji = "🔴"
+        name_color = "Красное"
+    elif roll < 0.90:
+        winning_color = "white"
+        emoji = "⚪️"
+        name_color = "Белое"
+    else:
+        winning_color = "green"
+        emoji = "🟢"
+        name_color = "Зеленое (Джекпот)"
+
+    color_names = {"red": "Красное 🔴", "white": "Белое ⚪️", "green": "Зеленое 🟢"}
+
+    if color == winning_color:
+        # Множитель: для зеленого x8, для красного/белого x2
+        multiplier = 8 if color == "green" else 2
+        winnings = bet * multiplier
+        profit = winnings - bet
+        new_coins = u["coins"] + profit
+        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+        db.commit()
+
+        msg = (
+            f"🎰 <b>РЕЗУЛЬТАТ КАЗИНО: {emoji} {name_color}!</b>\n\n"
+            f"🎯 Ты ставил на {color_names[color]} ({bet} 🪙) и <b>ПОБЕДИЛ!</b>\n"
+            f"💰 Выигрыш: <b>+{profit} коинов</b> (множитель x{multiplier})\n"
+            f"🪙 Новый баланс: <b>{new_coins} 🪙</b>"
+        )
+    else:
+        new_coins = u["coins"] - bet
+        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+        db.commit()
+
+        msg = (
+            f"🎰 <b>РЕЗУЛЬТАТ КАЗИНО: {emoji} {name_color}!</b>\n\n"
+            f"❌ Ты ставил на {color_names[color]} ({bet} 🪙) и проиграл...\n"
+            f"📉 Потеряно: <b>-{bet} 🪙</b>\n"
+            f"🪙 Новый баланс: <b>{new_coins} 🪙</b>"
+        )
+
+    await edit(c, msg)
     await c.answer()
 
 
@@ -513,6 +598,7 @@ async def on_duel(c: types.CallbackQuery):
     if b["coins"] < bet:
         return await c.answer(f"У тебя недостаточно коинов! Нужно {bet} 🪙, а у тебя {b['coins']} 🪙.", show_alert=True)
 
+    # Строго честный выбор 50 на 50 между инициатором (a) и тем, кто принял (b)
     winner, loser = random.choice([(a, b), (b, a)])
 
     if loser["shield_count"] > 0:
@@ -542,7 +628,7 @@ app.router.add_get("/", handle)
 async def web_server():
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.com("PORT", 10000) if hasattr(os.environ, "com") else int(os.environ.get("PORT", 10000)))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 

@@ -285,20 +285,49 @@ async def inline_query_menu(q: types.InlineQuery):
         )
 
     results = [
-        # Краткая памятка и правила в самом верху меню
+        # Памятка и правила в самом верху меню
         article(
             "info",
             "📌 Правила и информация о боте",
-            "Как играть, зарабатывать коины и тратить их на призы",
+            "Как играть, зарабатывать коины и обменивать их на призы",
             (
                 "📌 <b>Добро пожаловать в игровую экономику ПОРОГА!</b>\n\n"
-                "🤖 <b>Что это за бот?</b> Официальная валюта канала, где подписчики копят коины и обменивают их на призы (темы роликов, упоминания, рекламу и др.).\n\n"
+                "🤖 <b>Что это за бот?</b> Официальная валюта канала, где ты можешь копить коины и обменивать их на реальные призы (темы для роликов, ник в титрах, Telegram Premium и др.).\n\n"
                 "💡 <b>Как зарабатывать:</b>\n"
-                "• 🎁 <b>Ежедневный бонус</b> (+10 🪙 раз в сутки).\n"
-                "• 💬 <b>Вброс тейка</b> (раз в 6 часов, шанс 50/50).\n"
-                "• 🎰 <b>Казино</b> (до 5 раз в сутки, ставки до 50 🪙).\n"
-                "• ⚔️ <b>Дуэли</b> (сражения с игроками, шанс 50/50).\n\n"
+                "• 🎁 Забирай <b>Ежедневный бонус</b> (+10 🪙 раз в сутки).\n"
+                "• 💬 Вбрасывай <b>Тейки</b> (раз в 6 часов, шанс 50/50).\n"
+                "• 🎰 Крути <b>Казино</b> (до 5 раз в сутки, ставки до 50 🪙).\n"
+                "• ⚔️ Сражайся в <b>Дуэлях</b> (честно 50/50).\n\n"
                 f"💰 Твой текущий баланс: <b>{coins} 🪙</b>"
+            ),
+        ),
+        article(
+            "shop",
+            "🛒 Магазин призов ПОРОГА",
+            "Потрать коины на полезные и эксклюзивные привилегии:",
+            (
+                "🛒 <b>Магазин призов ПОРОГА:</b>\n"
+                "<i>Потрать коины на полезные и эксклюзивные привилегии:</i>\n\n"
+                "1️⃣ 🎬 <b>Тема для ролика — 5,000 🪙</b>\n"
+                "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
+                "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
+                "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
+                "3️⃣ ⭐ <b>Telegram Premium (1 мес) — 800 🪙</b>\n"
+                "<i>(Месяц подписки за активность в боте)</i>\n\n"
+                "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
+                "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
+                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
+                "<i>(Удваивает ежедневный бонус и тейки на целый день)</i>\n\n"
+                "6️⃣ ⭐ <b>Пополнить +100 коинов — 50 ⭐️</b>\n"
+                "<i>(Ускорение прогресса через Telegram Stars)</i>"
+            ),
+            kb(
+                ("🎬 Тема ролика (5000 🪙)", f"buy:{uid}:theme"),
+                ("🎥 Упоминание в титрах (2500 🪙)", f"buy:{uid}:mention"),
+                ("⭐ Telegram Premium (800 🪙)", f"buy:{uid}:tgprem"),
+                ("🛡 3 щита (150 🪙)", f"buy:{uid}:shield"),
+                ("🎟 Буст x2 (50 🪙)", f"buy:{uid}:boost"),
+                ("⭐ Купить +100 коинов (50 ⭐️)", f"buy:{uid}:stars100"),
             ),
         ),
         article(
@@ -322,32 +351,6 @@ async def inline_query_menu(q: types.InlineQuery):
                 ("30 🪙", f"cas_bet:{uid}:30"),
                 ("50 🪙", f"cas_bet:{uid}:50"),
             )
-        ),
-        article(
-            "shop",
-            "🛒 Магазин призов ПОРОГА",
-            "Обменивай коины на темы ролика, упоминания, рекламу и бусты",
-            (
-                "<b>🛒 Магазин призов ПОРОГА:</b>\n"
-                "<i>Потрать коины на полезные и эксклюзивные привилегии:</i>\n\n"
-                "1️⃣ <b>🎬 Тема для ролика</b> — 500 🪙\n"
-                "   <i>(Выбор темы для следующего видео на канале)</i>\n\n"
-                "2️⃣ <b>🎥 Упоминание в титрах</b> — 300 🪙\n"
-                "   <i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
-                "3️⃣ <b>📢 Реклама в канале</b> — 250 🪙\n"
-                "   <i>(Публикация твоего поста или канала у нас)</i>\n\n"
-                "4️⃣ <b>🛡 3 щита защиты</b> — 150 🪙\n"
-                "   <i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
-                "5️⃣ <b>🎟 Буст x2 на 24ч</b> — 50 🪙\n"
-                "   <i>(Удваивает ежедневный бонус и тейки на целый день)</i>"
-            ),
-            kb(
-                ("🎬 Тема ролика (500 🪙)", f"buy:{uid}:theme"),
-                ("🎥 Упоминание (300 🪙)", f"buy:{uid}:mention"),
-                ("📢 Реклама (250 🪙)", f"buy:{uid}:ads"),
-                ("🛡 3 щита (150 🪙)", f"buy:{uid}:shield"),
-                ("🎟 Буст x2 (50 🪙)", f"buy:{uid}:boost"),
-            ),
         ),
         article(
             "bonus",
@@ -672,12 +675,29 @@ async def on_buy(c: types.CallbackQuery):
     coins = u["coins"]
 
     prices = {
-        "theme": 500,
-        "mention": 300,
-        "ads": 250,
+        "theme": 5000,
+        "mention": 2500,
+        "tgprem": 800,
         "shield": 150,
         "boost": 50,
+        "stars100": 0,  # Оплата за звезды обрабатывается отдельно через Telegram Payments
     }
+
+    # Обработка покупки через Telegram Stars (пример через отправку инвойса)
+    if item == "stars100":
+        try:
+            await bot.send_invoice(
+                chat_id=c.from_user.id,
+                title="Пополнение баланса",
+                description="Получите +100 коинов на игровой баланс бота ПОРОГ",
+                payload="buy_stars_100",
+                currency="XTR",  # Валюта Telegram Stars
+                prices=[types.LabeledPrice(label="100 коинов", amount=50)]  # 50 звезд
+            )
+            await c.answer("Счет на оплату отправлен в личные сообщения с ботом!", show_alert=True)
+        except Exception:
+            await c.answer("Напишите боту в личные сообщения /start, чтобы покупать за звезды!", show_alert=True)
+        return
 
     price = prices.get(item, 0)
     if coins < price:
@@ -690,19 +710,19 @@ async def on_buy(c: types.CallbackQuery):
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
         await edit(c, "🎉 <b>Тема ролика куплена!</b> Админу отправлено уведомление.")
-        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили тему ролика (500 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили тему ролика (5000 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
 
     elif item == "mention":
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, "🎉 <b>Упоминание куплено!</b> Напиши админу свой ник для титров.")
-        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили упоминание (300 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
+        await edit(c, "🎉 <b>Упоминание в титрах куплено!</b> Напиши админу свой ник.")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили упоминание (2500 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
 
-    elif item == "ads":
+    elif item == "tgprem":
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
-        await edit(c, "📢 <b>Реклама куплена!</b> Скинь админу текст и ссылку.")
-        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили рекламу (250 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
+        await edit(c, "🎉 <b>Telegram Premium куплен!</b> Админу отправлено уведомление для выдачи приза.")
+        await bot.send_message(ADMIN_ID, f"🚨 <b>Купили Telegram Premium (800 🪙):</b>\n👤 {user_link} (ID: <code>{c.from_user.id}</code>)", parse_mode="HTML")
 
     elif item == "shield":
         db.execute("UPDATE users SET coins=?, shield_count=shield_count+3 WHERE id=?", (new_coins, owner))
@@ -716,6 +736,21 @@ async def on_buy(c: types.CallbackQuery):
         await edit(c, "💥 <b>Буст активирован!</b> На 24 часа бонус и тейки дают x2 коинов.")
 
     await c.answer()
+
+
+# Обработка успешного платежа Telegram Stars
+@dp.pre_checkout_query()
+async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
+
+
+@dp.message(F.successful_payment)
+async def on_successful_payment(message: types.Message):
+    if message.successful_payment.invoice_payload == "buy_stars_100":
+        user_id = message.from_user.id
+        db.execute("UPDATE users SET coins=coins+100 WHERE id=?", (user_id,))
+        db.commit()
+        await message.answer("⭐️ Оплата прошла успешно! Вам начислено <b>+100 коинов</b> на баланс.", parse_mode="HTML")
 
 
 # ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------

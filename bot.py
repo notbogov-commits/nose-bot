@@ -24,7 +24,7 @@ ADMIN_ID = 1642626687  # Твой ID
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-# Словарь для защиты от спама (анти-кликер для казино и кнопок)
+# Словарь для защиты от спама (анти-кликер для кнопок)
 last_action_time = {}
 
 # Инициализация базы данных с нуля (чистый старт для всех)
@@ -121,9 +121,10 @@ def top_text() -> str:
 
 
 def do_bonus(user: types.User) -> str:
-    """Логика выдачи ежедневного бонуса (раз в 24 часа)."""
+    """Логика выдачи ежедневного бонуса (раз в 24 часа) с защитой от накрутки."""
     u = get_user(user)
     now = datetime.datetime.now()
+    
     if u["last_bonus"]:
         last_dt = datetime.datetime.fromisoformat(u["last_bonus"])
         if now - last_dt < datetime.timedelta(days=1):
@@ -139,6 +140,7 @@ def do_bonus(user: types.User) -> str:
     new_coins = u["coins"] + delta
     db.execute("UPDATE users SET coins=?, last_bonus=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
+    
     boost_note = " (💥 Активен буст x2!)" if delta > 10 else ""
     return f"🎁 <b>Бонус забран!</b> Начислено <b>+{delta} 🪙</b>{boost_note}\n🪙 Баланс: <b>{new_coins} 🪙</b>"
 
@@ -283,12 +285,28 @@ async def inline_query_menu(q: types.InlineQuery):
         )
 
     results = [
+        # Краткая памятка и правила в самом верху меню
+        article(
+            "info",
+            "📌 Правила и информация о боте",
+            "Как играть, зарабатывать коины и тратить их на призы",
+            (
+                "📌 <b>Добро пожаловать в игровую экономику ПОРОГА!</b>\n\n"
+                "🤖 <b>Что это за бот?</b> Официальная валюта канала, где подписчики копят коины и обменивают их на призы (темы роликов, упоминания, рекламу и др.).\n\n"
+                "💡 <b>Как зарабатывать:</b>\n"
+                "• 🎁 <b>Ежедневный бонус</b> (+10 🪙 раз в сутки).\n"
+                "• 💬 <b>Вброс тейка</b> (раз в 6 часов, шанс 50/50).\n"
+                "• 🎰 <b>Казино</b> (до 5 раз в сутки, ставки до 50 🪙).\n"
+                "• ⚔️ <b>Дуэли</b> (сражения с игроками, шанс 50/50).\n\n"
+                f"💰 Твой текущий баланс: <b>{coins} 🪙</b>"
+            ),
+        ),
         article(
             "casino",
             "🎰 Казино ПОРОГА",
             "Ставка до 50 🪙 • Красное/Белое (47.5%, x2), Зеленое (5%, x8) • 5 игр в сутки",
             (
-                "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)[cite: 1]\n\n"
+                "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)\n\n"
                 "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
                 "• ⚪️ <b>Белое</b> — шанс 47.5% (Выплата x2)\n"
                 "• 🟢 <b>Зеленое</b> — шанс 5% (Джекпот x8)\n"
@@ -394,7 +412,15 @@ async def edit(c: types.CallbackQuery, text: str, markup=None):
 async def on_bonus(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
         return await c.answer("Не твоя кнопка", show_alert=True)
-    await edit(c, do_bonus(c.from_user))
+    
+    current_time = time.time()
+    user_id = c.from_user.id
+    if user_id in last_action_time and current_time - last_action_time[user_id] < 2:
+        return await c.answer("⏳ Подожди секунду...", show_alert=True)
+    last_action_time[user_id] = current_time
+
+    res_text = do_bonus(c.from_user)
+    await edit(c, res_text)
     await c.answer()
 
 
@@ -431,7 +457,7 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
     await edit(
         c,
         (
-            f"🎰 <b>Казино ПОРОГА</b> (осталось попыток сегодня: {5 - casino_count}/5)[cite: 1]\n\n"
+            f"🎰 <b>Казино ПОРОГА</b> (осталось попыток сегодня: {5 - casino_count}/5)\n\n"
             f"Выбранная ставка: <b>{bet} 🪙</b>\n\n"
             "<b>Шансы и выплаты:</b>\n"
             "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
@@ -459,7 +485,7 @@ async def on_casino_back(c: types.CallbackQuery):
     await edit(
         c,
         (
-            "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)[cite: 1]\n\n"
+            "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)\n\n"
             "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
             "• ⚪️ <b>Белое</b> — шанс 47.5% (Выплата x2)\n"
             "• 🟢 <b>Зеленое</b> — шанс 5% (Джекпот x8)\n"
@@ -488,7 +514,6 @@ async def on_casino_play(c: types.CallbackQuery):
     if c.from_user.id != owner:
         return await c.answer("Не твоя кнопка", show_alert=True)
 
-    # ЗАЩИТА ОТ СПАМА (Кулдаун 3 секунды на клики в казино)
     current_time = time.time()
     if owner in last_action_time and current_time - last_action_time[owner] < 3:
         return await c.answer("⏳ Не спеши! Подожди пару секунд перед следующим броском.", show_alert=True)
@@ -554,7 +579,7 @@ async def on_casino_play(c: types.CallbackQuery):
             f"🎯 Ставка на {color_names[color]} ({bet} 🪙) сыграла!\n"
             f"💰 Выигрыш: <b>+{profit} 🪙</b> (x{multiplier})\n"
             f"🪙 Твой новый баланс: <b>{new_coins} 🪙</b>\n"
-            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>[cite: 1]"
+            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>"
         )
     else:
         msg = (
@@ -562,7 +587,7 @@ async def on_casino_play(c: types.CallbackQuery):
             f"❌ Ставка на {color_names[color]} ({bet} 🪙) проиграла.\n"
             f"📉 Потеряно: <b>-{bet} 🪙</b>\n"
             f"🪙 Твой новый баланс: <b>{new_coins} 🪙</b>\n"
-            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>[cite: 1]"
+            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>"
         )
 
     await edit(c, msg)

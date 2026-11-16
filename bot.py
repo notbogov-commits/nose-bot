@@ -202,17 +202,6 @@ async def admin_add_coins(m: types.Message):
     await m.reply(f"👑 Накрутка: {amount:+d} 🪙. Баланс: {u['coins']} 🪙")
 
 
-@dp.message(Command("stars"))
-async def admin_check_stars(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-    await m.reply(
-        "⭐ <b>Управление звездами бота:</b>\n\n"
-        "Для просмотра баланса и вывода звезд используйте @BotFather (команда /mybots -> ваш бот -> настройки выплат).",
-        parse_mode="HTML"
-    )
-
-
 @dp.message(Command("backup"))
 async def admin_backup_db(m: types.Message):
     if m.from_user.id != ADMIN_ID:
@@ -290,15 +279,27 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "shop",
             "🛒 Магазин призов ПОРОГА",
-            "Выберите категорию: Реальные призы или Покупка коинов за звезды",
+            "Потрать накопленные коины на реальные призы и усиления",
             (
                 "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
-                "<i>Выберите интересующий вас раздел с помощью кнопок ниже 👇</i>\n\n"
+                "1️⃣ 🎬 <b>Тема ролика — 5,000 🪙</b>\n"
+                "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
+                "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
+                "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
+                "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
+                "<i>(Месяц подписки за активность в боте)</i>\n\n"
+                "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
+                "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
+                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
+                "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
                 f"💰 Ваш баланс: <b>{coins} 🪙</b>"
             ),
             InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎁 Реальные призы и бонусы", callback_data=f"shop_cat:{uid}:real")],
-                [InlineKeyboardButton(text="⭐ Покупка коинов за Stars", callback_data=f"shop_cat:{uid}:stars")]
+                [InlineKeyboardButton(text="🎬 Тема ролика (5000 🪙)", callback_data=f"buy:{uid}:theme")],
+                [InlineKeyboardButton(text="🎥 Упоминание в титрах (2500 🪙)", callback_data=f"buy:{uid}:mention")],
+                [InlineKeyboardButton(text="⭐ Telegram Premium (1600 🪙)", callback_data=f"buy:{uid}:tgprem")],
+                [InlineKeyboardButton(text="🛡 3 щита (150 🪙)", callback_data=f"buy:{uid}:shield")],
+                [InlineKeyboardButton(text="🎟 Буст x2 (50 🪙)", callback_data=f"buy:{uid}:boost")],
             ])
         ),
         article(
@@ -370,70 +371,6 @@ async def on_work(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
         return await c.answer("Не твоя кнопка", show_alert=True)
     await edit(c, do_work(c.from_user))
-    await c.answer()
-
-
-# ---------- НАВИГАЦИЯ ПО КАТЕГОРИЯМ МАГАЗИНА ----------
-@dp.callback_query(F.data.startswith("shop_cat:"))
-async def on_shop_category(c: types.CallbackQuery):
-    _, owner_str, category = c.data.split(":")
-    owner = int(owner_str)
-    if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
-
-    u = get_user(c.from_user)
-    coins = u["coins"]
-
-    if category == "real":
-        text = (
-            "🎁 <b>Реальные призы и бонусы (за коины):</b>\n\n"
-            "1️⃣ 🎬 <b>Тема ролика — 5,000 🪙</b>\n"
-            "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
-            "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
-            "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
-            "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
-            "<i>(Месяц подписки за активность в боте)</i>\n\n"
-            "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
-            "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
-            "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
-            "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
-            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
-        )
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎬 Тема ролика (5000 🪙)", callback_data=f"buy:{owner}:theme")],
-            [InlineKeyboardButton(text="🎥 Упоминание в титрах (2500 🪙)", callback_data=f"buy:{owner}:mention")],
-            [InlineKeyboardButton(text="⭐ Telegram Premium (1600 🪙)", callback_data=f"buy:{owner}:tgprem")],
-            [InlineKeyboardButton(text="🛡 3 щита (150 🪙)", callback_data=f"buy:{owner}:shield")],
-            [InlineKeyboardButton(text="🎟 Буст x2 (50 🪙)", callback_data=f"buy:{owner}:boost")],
-            [InlineKeyboardButton(text="◀️ Назад в магазин", callback_data=f"shop_cat:{owner}:main")]
-        ])
-    elif category == "stars":
-        text = (
-            "⭐ <b>Покупка коинов за Telegram Stars:</b>\n\n"
-            "Выберите подходящий пакет для быстрого пополнения баланса:\n\n"
-            "• <b>+4 коина</b> — <b>1 ⭐️</b>\n"
-            "• <b>+80 коинов</b> — <b>20 ⭐️</b>\n"
-            "• <b>+200 коинов</b> — <b>50 ⭐️</b> <i>(Выгодно!)</i>\n\n"
-            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
-        )
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⭐ +4 коина (1 ⭐️)", callback_data=f"buy:{owner}:stars4")],
-            [InlineKeyboardButton(text="⭐ +80 коинов (20 ⭐️)", callback_data=f"buy:{owner}:stars80")],
-            [InlineKeyboardButton(text="⭐ +200 коинов (50 ⭐️)", callback_data=f"buy:{owner}:stars200")],
-            [InlineKeyboardButton(text="◀️ Назад в магазин", callback_data=f"shop_cat:{owner}:main")]
-        ])
-    else:  # main
-        text = (
-            "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
-            "<i>Выберите интересующий вас раздел с помощью кнопок ниже 👇</i>\n\n"
-            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
-        )
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 Реальные призы и бонусы", callback_data=f"shop_cat:{owner}:real")],
-            [InlineKeyboardButton(text="⭐ Покупка коинов за Stars", callback_data=f"shop_cat:{owner}:stars")]
-        ])
-
-    await edit(c, text, markup)
     await c.answer()
 
 
@@ -565,7 +502,7 @@ async def on_duel(c: types.CallbackQuery):
     await c.answer()
 
 
-# ---------- МАГАЗИН И ПОКУПКА ЗА ЗВЕЗДЫ ----------
+# ---------- МАГАЗИН ПРИЗОВ ЗА КОИНЫ ----------
 @dp.callback_query(F.data.startswith("buy:"))
 async def on_buy(c: types.CallbackQuery):
     _, owner, item = c.data.split(":")
@@ -576,30 +513,6 @@ async def on_buy(c: types.CallbackQuery):
     u = get_user(c.from_user)
     coins = u["coins"]
     prices = {"theme": 5000, "mention": 2500, "tgprem": 1600, "shield": 150, "boost": 50}
-
-    # Пакеты пополнения за Telegram Stars
-    payload_map = {
-        "stars4": ("Пополнение баланса (+4 коина)", "buy_stars_4", 4, 1),
-        "stars80": ("Пополнение баланса (+80 коинов)", "buy_stars_80", 80, 20),
-        "stars200": ("Пополнение баланса (+200 коинов)", "buy_stars_200", 200, 50)
-    }
-
-    if item in payload_map:
-        title, payload, _, amount_stars = payload_map[item]
-        try:
-            await bot.send_invoice(
-                chat_id=c.from_user.id,
-                title=title,
-                description="Покупка игровой валюты в боте ПОРОГ",
-                payload=payload,
-                currency="XTR",
-                prices=[types.LabeledPrice(label=title, amount=amount_stars)]
-            )
-            await c.answer("Счет на оплату отправлен в личные сообщения с ботом!", show_alert=True)
-        except Exception as e:
-            print(f"Ошибка отправки инвойса: {e}")
-            await c.answer("⚠️ Сначала напишите боту в личные сообщения (/start), чтобы получить счет!", show_alert=True)
-        return
 
     price = prices.get(item, 0)
     if coins < price:
@@ -630,40 +543,6 @@ async def on_buy(c: types.CallbackQuery):
         await edit(c, "💥 <b>Буст активирован!</b> На 24 часа бонус и тейки дают x2 коинов.")
 
     await c.answer()
-
-
-# ---------- ОБРАБОТКА ТЕЛЕГРАМ ЗВЕЗД ( STARS ) ----------
-@dp.pre_checkout_query()
-async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
-    await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
-
-
-@dp.message(F.successful_payment)
-async def on_successful_payment(message: types.Message):
-    payment = message.successful_payment
-    payload = payment.invoice_payload
-    user_id = message.from_user.id
-    
-    # Жестко гарантируем наличие пользователя в базе данных
-    get_user(message.from_user)
-
-    coins_to_add = 4
-    if payload == "buy_stars_4":
-        coins_to_add = 4
-    elif payload == "buy_stars_80":
-        coins_to_add = 80
-    elif payload == "buy_stars_200":
-        coins_to_add = 200
-
-    # Начисление коинов в базу данных
-    db.execute("UPDATE users SET coins = coins + ? WHERE id = ?", (coins_to_add, user_id))
-    db.commit()
-
-    # Отправка подтверждения об успешном пополнении
-    await message.answer(
-        f"⭐️ <b>Оплата прошла успешно!</b>\nВам зачислено <b>+{coins_to_add} 🪙</b> на игровой баланс[cite: 4].", 
-        parse_mode="HTML"
-    )
 
 
 # ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------

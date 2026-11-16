@@ -644,7 +644,7 @@ async def on_successful_payment(message: types.Message):
     payload = payment.invoice_payload
     user_id = message.from_user.id
     
-    # Гарантируем наличие пользователя в базе данных
+    # Жестко гарантируем наличие пользователя в базе данных
     get_user(message.from_user)
 
     coins_to_add = 4

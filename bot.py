@@ -300,11 +300,17 @@ async def inline_query_menu(q: types.InlineQuery):
             (
                 "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
                 "1️⃣ 🎬 <b>Тема для ролика — 5,000 🪙</b>\n"
+                "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
                 "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
-                "3️⃣ ⭐ <b>Telegram Premium (1 мес) — 1,600 🪙</b>\n"
+                "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
+                "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
+                "<i>(Месяц подписки за активность в боте)</i>\n\n"
                 "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
+                "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
                 "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
-                "6️⃣ ⭐ <b>Пополнить +100 коинов — 25 ⭐️</b>"
+                "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
+                "6️⃣ ⭐ <b>Пополнить +100 коинов — 25 ⭐️</b>\n"
+                "<i>(Ускорение прогресса через Telegram Stars)</i>"
             ),
             kb(
                 ("🎬 Тема ролика (5000 🪙)", f"buy:{uid}:theme"),
@@ -544,7 +550,7 @@ async def on_buy(c: types.CallbackQuery):
 
     price = prices.get(item, 0)
     if coins < price:
-        return await c.answer(f"Недостаточно коинов! Нужно {price} 🪙", show_ask=True) if hasattr(types, 'show_alert') else await c.answer(f"Недостаточно коинов! Нужно {price} 🪙", show_alert=True)
+        return await c.answer(f"Недостаточно коинов! Нужно {price} 🪙", show_alert=True)
 
     new_coins = coins - price
     user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"

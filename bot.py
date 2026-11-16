@@ -41,11 +41,6 @@ db.executescript(
     CREATE TABLE IF NOT EXISTS invited_users (
         user_id INTEGER PRIMARY KEY
     );
-    CREATE TABLE IF NOT EXISTS news_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT,
-        time TEXT
-    );
     CREATE TABLE IF NOT EXISTS legacy_balances (
         name TEXT PRIMARY KEY,
         coins INTEGER
@@ -115,12 +110,6 @@ def kb(*buttons: tuple[str, str]) -> InlineKeyboardMarkup:
     )
 
 
-def add_news(text: str):
-    now = datetime.datetime.now().isoformat()
-    db.execute("INSERT INTO news_log (text, time) VALUES (?, ?)", (text, now))
-    db.commit()
-
-
 def get_toxicity_title(u: sqlite3.Row) -> str:
     if u["custom_status"]:
         return u["custom_status"]
@@ -164,22 +153,6 @@ def top_text() -> str:
         return "Пока никто не заработал коины"
     lines = [f"{i + 1}. {r['name']} — {r['coins']} коинов" for i, r in enumerate(combined)]
     return "🏆 Общий рейтинг комментаторов:\n" + "\n".join(lines)
-
-
-NEWS_JOKES = [
-    "📰 НОВОСТИ КАНАЛА:\n\nВ комментариях тишина. Админ снова забыл выпустить мем, все сидят без коинов.",
-    "📰 НОВОСТИ КАНАЛА:\n\nСамый душный комментатор недели пытался расплатиться коинами в магазине, но его выгнали за токсичность.",
-    "📰 НОВОСТИ КАНАЛА:\n\nСиноптики прогнозируют бурю в комментах: подписчики копят коины для жестких дуэлей.",
-    "📰 НОВОСТИ КАНАЛА:\n\nУченые выяснили, что игра в боте заменяет психотерапевта, но разрушает личную жизнь.",
-    "📰 НОВОСТИ КАНАЛА:\n\nАдмин объявил амнистицию для забаненных, но они всё равно не поняли, куда писать.",
-]
-
-
-def get_news_text() -> str:
-    row = db.execute("SELECT text FROM news_log ORDER BY id DESC LIMIT 1").fetchone()
-    if row and random.random() < 0.4:
-        return f"📰 НОВОСТИ КАНАЛА:\n\n{row['text']}"
-    return random.choice(NEWS_JOKES)
 
 
 def do_bonus(user: types.User) -> str:
@@ -348,14 +321,8 @@ async def inline_query_menu(q: types.InlineQuery):
 
     results = [
         article(
-            "news",
-            "📰 Новости канала",
-            "Свежие шутки и сводки из жизни комьюнити",
-            get_news_text(),
-        ),
-        article(
             "casino",
-            "🎰 Казино ПОРОГА (Красное / Зеленое / Белое)",
+            "🎰 Казино ПОРОГА (Красное / Белое / Зеленое)",
             "Ставь 5, 10 или 20 коинов и испытай удачу с честными шансами!",
             (
                 "🎰 <b>Добро пожаловать в Казино ПОРОГА!</b>\n\n"
@@ -455,12 +422,11 @@ async def on_bonus(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("work:"))
 async def on_work(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("Ne твоя кнопка", show_alert=True)
+        return await c.answer("Не твоя кнопка", show_alert=True)
     await edit(c, do_work(c.from_user))
     await c.answer()
 
 
-# ---------- ЛОГИКА КАЗИНО ----------
 @dp.callback_query(F.data.startswith("cas:"))
 async def on_casino(c: types.CallbackQuery):
     _, owner, bet_str, color = c.data.split(":")
@@ -474,7 +440,6 @@ async def on_casino(c: types.CallbackQuery):
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
 
-    # Шансы казино: Красное 45%, Белое 45%, Зеленое 10%
     roll = random.random()
     if roll < 0.45:
         winning_color = "red"
@@ -492,7 +457,6 @@ async def on_casino(c: types.CallbackQuery):
     color_names = {"red": "Красное 🔴", "white": "Белое ⚪️", "green": "Зеленое 🟢"}
 
     if color == winning_color:
-        # Множитель: для зеленого x8, для красного/белого x2
         multiplier = 8 if color == "green" else 2
         winnings = bet * multiplier
         profit = winnings - bet
@@ -598,7 +562,6 @@ async def on_duel(c: types.CallbackQuery):
     if b["coins"] < bet:
         return await c.answer(f"У тебя недостаточно коинов! Нужно {bet} 🪙, а у тебя {b['coins']} 🪙.", show_alert=True)
 
-    # Строго честный выбор 50 на 50 между инициатором (a) и тем, кто принял (b)
     winner, loser = random.choice([(a, b), (b, a)])
 
     if loser["shield_count"] > 0:
@@ -612,7 +575,6 @@ async def on_duel(c: types.CallbackQuery):
     db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
     db.commit()
 
-    add_news(f"🎯 Дуэльная бойня: {winner['name']} разнес мнение {loser['name']} и забрал {bet} 🪙!")
     await edit(c, f"⚔️ В дуэли мнений (ставка: {bet} 🪙) победил {winner['name']} и забрал банк у {loser['name']}!{shield_msg}")
     await c.answer()
 
@@ -628,7 +590,7 @@ app.router.add_get("/", handle)
 async def web_server():
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.com("PORT", 10000) if hasattr(os.environ, "com") else int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 

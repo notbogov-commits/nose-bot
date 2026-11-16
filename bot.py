@@ -3,6 +3,7 @@ import datetime
 import os
 import random
 import sqlite3
+import time
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -22,6 +23,9 @@ ADMIN_ID = 1642626687  # Твой ID
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
+
+# Словарь для защиты от спама (анти-кликер для казино и кнопок)
+last_action_time = {}
 
 # Инициализация базы данных с нуля (чистый старт для всех)
 db = sqlite3.connect("game.db")
@@ -282,9 +286,9 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "casino",
             "🎰 Казино ПОРОГА",
-            "Ставка до 50 🪙 • Красное/Белое (47.5%, x2), Зеленое (5%, x8) • 3 игры в сутки",
+            "Ставка до 50 🪙 • Красное/Белое (47.5%, x2), Зеленое (5%, x8) • 5 игр в сутки",
             (
-                "🎰 <b>Казино ПОРОГА</b> (лимит: 3 раза в сутки)\n\n"
+                "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)[cite: 1]\n\n"
                 "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
                 "• ⚪️ <b>Белое</b> — шанс 47.5% (Выплата x2)\n"
                 "• 🟢 <b>Зеленое</b> — шанс 5% (Джекпот x8)\n"
@@ -418,8 +422,8 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
     today_str = now.strftime("%Y-%m-%d")
     
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
-    if casino_count >= 3:
-        return await c.answer("🚫 Лимит исчерпан! В казино можно играть только 3 раза в сутки.", show_alert=True)
+    if casino_count >= 5:
+        return await c.answer("🚫 Лимит исчерпан! В казино можно играть только 5 раз в сутки.", show_alert=True)
 
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
@@ -427,7 +431,7 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
     await edit(
         c,
         (
-            f"🎰 <b>Казино ПОРОГА</b> (осталось попыток сегодня: {3 - casino_count}/3)\n\n"
+            f"🎰 <b>Казино ПОРОГА</b> (осталось попыток сегодня: {5 - casino_count}/5)[cite: 1]\n\n"
             f"Выбранная ставка: <b>{bet} 🪙</b>\n\n"
             "<b>Шансы и выплаты:</b>\n"
             "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
@@ -455,7 +459,7 @@ async def on_casino_back(c: types.CallbackQuery):
     await edit(
         c,
         (
-            "🎰 <b>Казино ПОРОГА</b> (лимит: 3 раза в сутки)\n\n"
+            "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)[cite: 1]\n\n"
             "• 🔴 <b>Красное</b> — шанс 47.5% (Выплата x2)\n"
             "• ⚪️ <b>Белое</b> — шанс 47.5% (Выплата x2)\n"
             "• 🟢 <b>Зеленое</b> — шанс 5% (Джекпот x8)\n"
@@ -484,6 +488,12 @@ async def on_casino_play(c: types.CallbackQuery):
     if c.from_user.id != owner:
         return await c.answer("Не твоя кнопка", show_alert=True)
 
+    # ЗАЩИТА ОТ СПАМА (Кулдаун 3 секунды на клики в казино)
+    current_time = time.time()
+    if owner in last_action_time and current_time - last_action_time[owner] < 3:
+        return await c.answer("⏳ Не спеши! Подожди пару секунд перед следующим броском.", show_alert=True)
+    last_action_time[owner] = current_time
+
     if bet > MAX_CASINO_BET:
         return await c.answer(f"Максимальная ставка в казино — {MAX_CASINO_BET} монет!", show_alert=True)
 
@@ -492,8 +502,8 @@ async def on_casino_play(c: types.CallbackQuery):
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
-    if casino_count >= 3:
-        return await c.answer("🚫 Лимит исчерпан! В казино можно играть только 3 раза в сутки.", show_alert=True)
+    if casino_count >= 5:
+        return await c.answer("🚫 Лимит исчерпан! В казино можно играть только 5 раз в сутки.", show_alert=True)
 
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
@@ -544,7 +554,7 @@ async def on_casino_play(c: types.CallbackQuery):
             f"🎯 Ставка на {color_names[color]} ({bet} 🪙) сыграла!\n"
             f"💰 Выигрыш: <b>+{profit} 🪙</b> (x{multiplier})\n"
             f"🪙 Твой новый баланс: <b>{new_coins} 🪙</b>\n"
-            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/3</i>"
+            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>[cite: 1]"
         )
     else:
         msg = (
@@ -552,7 +562,7 @@ async def on_casino_play(c: types.CallbackQuery):
             f"❌ Ставка на {color_names[color]} ({bet} 🪙) проиграла.\n"
             f"📉 Потеряно: <b>-{bet} 🪙</b>\n"
             f"🪙 Твой новый баланс: <b>{new_coins} 🪙</b>\n"
-            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/3</i>"
+            f"<i>Использовано попыток в казино сегодня: {new_casino_count}/5</i>[cite: 1]"
         )
 
     await edit(c, msg)
@@ -568,7 +578,6 @@ async def on_duel_prep(c: types.CallbackQuery):
     if c.from_user.id != owner:
         return await c.answer("Не твоя кнопка", show_alert=True)
 
-    # ИСПРАВЛЕНИЕ БАГА: гарантируем, что инициатор записан в базу данных
     u = get_user(c.from_user)
     
     if u["coins"] < bet:
@@ -597,7 +606,6 @@ async def on_duel(c: types.CallbackQuery):
     if c.from_user.id == owner:
         return await c.answer("Нельзя принять свой вызов", show_alert=True)
 
-    # Инициатор теперь точно найдется, так как проверяется/создается в on_duel_prep и get_user
     a = db.execute("SELECT * FROM users WHERE id=?", (owner,)).fetchone()
     b = get_user(c.from_user)
     if not a:
@@ -610,7 +618,6 @@ async def on_duel(c: types.CallbackQuery):
     if b["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
 
-    # Честный выбор победителя 50 на 50
     winner, loser = random.choice([(a, b), (b, a)])
 
     if loser["shield_count"] > 0:

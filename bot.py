@@ -17,13 +17,13 @@ from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAENZDrBothOJODdYIgOzPZRGfl-noFs1QU")
 DEFAULT_BET = 5  # Базовая ставка 5 коинов
-MAX_CASINO_BET = 50  # Максимальная ставка в казино
+MAX_CASINO_BET = 50  # Максимальная ставка в казино и дуэлях
 ADMIN_ID = 1642626687  # Твой ID
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-# База данных с нуля
+# Инициализация базы данных с нуля (чистый старт для всех)
 db = sqlite3.connect("game.db")
 db.row_factory = sqlite3.Row
 db.executescript(
@@ -51,6 +51,7 @@ db.commit()
 
 
 def get_user(user: types.User) -> sqlite3.Row:
+    """Получает пользователя из базы или создает нового с балансом 10 коинов."""
     existing = db.execute("SELECT * FROM users WHERE id=?", (user.id,)).fetchone()
     if not existing:
         db.execute(
@@ -66,12 +67,14 @@ def get_user(user: types.User) -> sqlite3.Row:
 
 
 def kb(*buttons: tuple[str, str]) -> InlineKeyboardMarkup:
+    """Вспомогательная функция для генерации инлайн-клавиатур."""
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d)] for t, d in buttons]
     )
 
 
 def get_toxicity_title(u: sqlite3.Row) -> str:
+    """Определяет игровой статус/титул пользователя в зависимости от баланса."""
     if u["custom_status"]:
         return u["custom_status"]
     coins = u["coins"]
@@ -90,9 +93,10 @@ def get_toxicity_title(u: sqlite3.Row) -> str:
 
 
 def stats_text(user: types.User) -> str:
+    """Формирует текст личной статистики игрока."""
     u = get_user(user)
     title = get_toxicity_title(u)
-    shield_str = f"\n🛡 Щиты защиты: {u['shield_count']}" if u["shield_count"] > 0 else ""
+    shield_str = f"\n🛡 Защитных щитов: {u['shield_count']}" if u["shield_count"] > 0 else ""
     return (
         f"📊 <b>Статистика игрока: {u['name']}</b>\n\n"
         f"🪙 Баланс: <b>{u['coins']} 🪙</b>\n"
@@ -103,6 +107,7 @@ def stats_text(user: types.User) -> str:
 
 
 def top_text() -> str:
+    """Формирует таблицу лидеров (Топ-15)."""
     rows = db.execute("SELECT name, coins FROM users ORDER BY coins DESC LIMIT 15").fetchall()
     if not rows:
         return "🏆 <b>Рейтинг пуст.</b> Будь первым!"
@@ -112,6 +117,7 @@ def top_text() -> str:
 
 
 def do_bonus(user: types.User) -> str:
+    """Логика выдачи ежедневного бонуса (раз в 24 часа)."""
     u = get_user(user)
     now = datetime.datetime.now()
     if u["last_bonus"]:
@@ -134,6 +140,7 @@ def do_bonus(user: types.User) -> str:
 
 
 def do_work(user: types.User) -> str:
+    """Логика вброса тейка в комментарии (раз в 6 часов, шанс 50/50)."""
     u = get_user(user)
     now = datetime.datetime.now()
     if u["last_work"]:
@@ -164,6 +171,7 @@ def do_work(user: types.User) -> str:
 
 
 def article(id_: str, title: str, description: str, text: str, markup=None) -> InlineQueryResultArticle:
+    """Вспомогательная функция для элементов инлайн-меню."""
     return InlineQueryResultArticle(
         id=id_,
         title=title,
@@ -205,6 +213,7 @@ async def start(m: types.Message):
 
 @dp.message()
 async def handle_all_messages(message: types.Message):
+    """Обработка текстовых сообщений и защита от спама для новых участников в топиках."""
     if not message.from_user or message.from_user.is_bot:
         return
 
@@ -236,6 +245,7 @@ async def handle_all_messages(message: types.Message):
             await message.reply(teaser, reply_markup=keyboard, parse_mode="HTML")
 
 
+# ---------- ИНЛАЙН-МЕНЮ БОТА ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     uid = q.from_user.id
@@ -372,6 +382,7 @@ async def inline_query_menu(q: types.InlineQuery):
 
 
 async def edit(c: types.CallbackQuery, text: str, markup=None):
+    """Удобное редактирование текста инлайн-сообщения."""
     await bot.edit_message_text(text, inline_message_id=c.inline_message_id, reply_markup=markup, parse_mode="HTML")
 
 
@@ -391,7 +402,7 @@ async def on_work(c: types.CallbackQuery):
     await c.answer()
 
 
-# Шаг 1 в казино: выбрали ставку, проверяем лимит 3 раза в сутки
+# ---------- ЛОГИКА КАЗИНО ----------
 @dp.callback_query(F.data.startswith("cas_bet:"))
 async def on_casino_bet_chosen(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
@@ -403,7 +414,6 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
 
     u = get_user(c.from_user)
     
-    # Проверка лимита казино (3 раза в сутки)
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     
@@ -465,7 +475,6 @@ async def on_casino_back(c: types.CallbackQuery):
     await c.answer()
 
 
-# Шаг 2 в казино: бросок, учет лимита и результат
 @dp.callback_query(F.data.startswith("cas_play:"))
 async def on_casino_play(c: types.CallbackQuery):
     _, owner_str, bet_str, color = c.data.split(":")
@@ -480,7 +489,6 @@ async def on_casino_play(c: types.CallbackQuery):
 
     u = get_user(c.from_user)
     
-    # Финальная проверка лимита перед броском
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
@@ -490,10 +498,7 @@ async def on_casino_play(c: types.CallbackQuery):
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
 
-    # Обновляем счетчик казино для игрока
     new_casino_count = casino_count + 1
-    
-    # 1. Списываем ставку и записываем попытку
     new_coins = u["coins"] - bet
     db.execute(
         "UPDATE users SET coins=?, casino_count=?, last_casino_date=? WHERE id=?", 
@@ -501,7 +506,6 @@ async def on_casino_play(c: types.CallbackQuery):
     )
     db.commit()
 
-    # 2. Показываем анимацию слота
     await edit(c, f"🎰 <b>Казино ПОРОГА</b>\n\nСтавка: {bet} 🪙. <b>Крутим рулетку...</b> 🎲")
     
     try:
@@ -511,7 +515,6 @@ async def on_casino_play(c: types.CallbackQuery):
     
     await asyncio.sleep(3)
 
-    # Новые шансы: Красное 47.5%, Белое 47.5%, Зеленое 5%
     roll = random.random()
     if roll < 0.475:
         winning_color = "red"
@@ -556,7 +559,7 @@ async def on_casino_play(c: types.CallbackQuery):
     await c.answer()
 
 
-# Создание дуэли после выбора ставки кнопками
+# ---------- ЛОГИКА ДУЭЛЕЙ ----------
 @dp.callback_query(F.data.startswith("duel_prep:"))
 async def on_duel_prep(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
@@ -565,7 +568,9 @@ async def on_duel_prep(c: types.CallbackQuery):
     if c.from_user.id != owner:
         return await c.answer("Не твоя кнопка", show_alert=True)
 
+    # ИСПРАВЛЕНИЕ БАГА: гарантируем, что инициатор записан в базу данных
     u = get_user(c.from_user)
+    
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов для ставки в {bet} 🪙!", show_alert=True)
 
@@ -585,6 +590,45 @@ async def on_duel_prep(c: types.CallbackQuery):
     await c.answer()
 
 
+@dp.callback_query(F.data.startswith("duel:"))
+async def on_duel(c: types.CallbackQuery):
+    _, owner, bet = c.data.split(":")
+    owner, bet = int(owner), int(bet)
+    if c.from_user.id == owner:
+        return await c.answer("Нельзя принять свой вызов", show_alert=True)
+
+    # Инициатор теперь точно найдется, так как проверяется/создается в on_duel_prep и get_user
+    a = db.execute("SELECT * FROM users WHERE id=?", (owner,)).fetchone()
+    b = get_user(c.from_user)
+    if not a:
+        return await c.answer("Инициатор дуэли не найден в базе данных", show_alert=True)
+
+    if a["coins"] < bet:
+        await edit(c, f"❌ Дуэль на <b>{bet} 🪙</b> отменена: у {a['name']} не хватает коинов.")
+        return await c.answer("У инициатора не хватает коинов", show_alert=True)
+
+    if b["coins"] < bet:
+        return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
+
+    # Честный выбор победителя 50 на 50
+    winner, loser = random.choice([(a, b), (b, a)])
+
+    if loser["shield_count"] > 0:
+        db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"],))
+        db.commit()
+        shield_msg = f" (у {loser['name']} сработал щит 🛡)"
+    else:
+        db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
+        shield_msg = ""
+
+    db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
+    db.commit()
+
+    await edit(c, f"⚔️ <b>Итог дуэли ({bet} 🪙):</b> победил {winner['name']}, забрав банк у {loser['name']}!{shield_msg}")
+    await c.answer()
+
+
+# ---------- МАГАЗИН ПРИЗОВ ----------
 @dp.callback_query(F.data.startswith("buy:"))
 async def on_buy(c: types.CallbackQuery):
     _, owner, item = c.data.split(":")
@@ -642,42 +686,7 @@ async def on_buy(c: types.CallbackQuery):
     await c.answer()
 
 
-@dp.callback_query(F.data.startswith("duel:"))
-async def on_duel(c: types.CallbackQuery):
-    _, owner, bet = c.data.split(":")
-    owner, bet = int(owner), int(bet)
-    if c.from_user.id == owner:
-        return await c.answer("Нельзя принять свой вызов", show_alert=True)
-
-    a = db.execute("SELECT * FROM users WHERE id=?", (owner,)).fetchone()
-    b = get_user(c.from_user)
-    if not a:
-        return await c.answer("Инициатор не найден", show_alert=True)
-
-    if a["coins"] < bet:
-        await edit(c, f"❌ Дуэль на <b>{bet} 🪙</b> отменена: у {a['name']} не хватает коинов.")
-        return await c.answer("У инициатора не хватает коинов", show_alert=True)
-
-    if b["coins"] < bet:
-        return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
-
-    winner, loser = random.choice([(a, b), (b, a)])
-
-    if loser["shield_count"] > 0:
-        db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"],))
-        db.commit()
-        shield_msg = f" (у {loser['name']} сработал щит 🛡)"
-    else:
-        db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (bet, loser["id"]))
-        shield_msg = ""
-
-    db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (bet, winner["id"]))
-    db.commit()
-
-    await edit(c, f"⚔️ <b>Итог дуэли ({bet} 🪙):</b> победил {winner['name']}, забрав банк у {loser['name']}!{shield_msg}")
-    await c.answer()
-
-
+# ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -695,7 +704,6 @@ async def web_server():
 
 
 async def main():
-    asyncio.create_task(web_server())
     asyncio.create_task(web_server())
     await dp.start_polling(bot)
 

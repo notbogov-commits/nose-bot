@@ -296,30 +296,16 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "shop",
             "🛒 Магазин призов ПОРОГА",
-            "Потрать коины на полезные и эксклюзивные привилегии:",
+            "Выберите категорию: Реальные призы или Покупка коинов за звезды",
             (
                 "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
-                "1️⃣ 🎬 <b>Тема для ролика — 5,000 🪙</b>\n"
-                "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
-                "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
-                "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
-                "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
-                "<i>(Месяц подписки за активность в боте)</i>\n\n"
-                "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
-                "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
-                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
-                "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
-                "6️⃣ ⭐ <b>Пополнить +100 коинов — 25 ⭐️</b>\n"
-                "<i>(Ускорение прогресса через Telegram Stars)</i>"
+                "<i>Выберите интересующий вас раздел с помощью кнопок ниже 👇</i>\n\n"
+                f"💰 Ваш баланс: <b>{coins} 🪙</b>"
             ),
-            kb(
-                ("🎬 Тема ролика (5000 🪙)", f"buy:{uid}:theme"),
-                ("🎥 Упоминание в титрах (2500 🪙)", f"buy:{uid}:mention"),
-                ("⭐ Telegram Premium (1600 🪙)", f"buy:{uid}:tgprem"),
-                ("🛡 3 щита (150 🪙)", f"buy:{uid}:shield"),
-                ("🎟 Буст x2 (50 🪙)", f"buy:{uid}:boost"),
-                ("⭐ Купить +100 коинов (25 ⭐️)", f"buy:{uid}:stars100"),
-            ),
+            InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎁 Реальные призы и бонусы", callback_data=f"shop_cat:{uid}:real")],
+                [InlineKeyboardButton(text="⭐ Покупка коинов за Stars", callback_data=f"shop_cat:{uid}:stars")]
+            ])
         ),
         article(
             "casino",
@@ -390,6 +376,66 @@ async def on_work(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
         return await c.answer("Не твоя кнопка", show_alert=True)
     await edit(c, do_work(c.from_user))
+    await c.answer()
+
+
+# ---------- НАВИГАЦИЯ ПО КАТЕГОРИЯМ МАГАЗИНА ----------
+@dp.callback_query(F.data.startswith("shop_cat:"))
+async def on_shop_category(c: types.CallbackQuery):
+    _, owner_str, category = c.data.split(":")
+    owner = int(owner_str)
+    if c.from_user.id != owner:
+        return await c.answer("Не твоя кнопка", show_alert=True)
+
+    u = get_user(c.from_user)
+    coins = u["coins"]
+
+    if category == "real":
+        text = (
+            "🎁 <b>Реальные призы и бонусы (за коины):</b>\n\n"
+            "1️⃣ 🎬 <b>Тема ролика — 5,000 🪙</b>\n"
+            "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
+            "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
+            "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
+            "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
+            "<i>(Месяц подписки за активность в боте)</i>\n\n"
+            "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
+            "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
+            "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
+            "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
+            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Тема ролика (5000 🪙)", callback_data=f"buy:{owner}:theme")],
+            [InlineKeyboardButton(text="🎥 Упоминание в титрах (2500 🪙)", callback_data=f"buy:{owner}:mention")],
+            [InlineKeyboardButton(text="⭐ Telegram Premium (1600 🪙)", callback_data=f"buy:{owner}:tgprem")],
+            [InlineKeyboardButton(text="🛡 3 щита (150 🪙)", callback_data=f"buy:{owner}:shield")],
+            [InlineKeyboardButton(text="🎟 Буст x2 (50 🪙)", callback_data=f"buy:{owner}:boost")],
+            [InlineKeyboardButton(text="◀️ Назад в магазин", callback_data=f"shop_cat:{owner}:main")]
+        ])
+    elif category == "stars":
+        text = (
+            "⭐ <b>Покупка коинов за Telegram Stars:</b>\n\n"
+            "Мгновенное ускорение прогресса в игре с помощью внутренней валюты Telegram.\n\n"
+            "• <b>+100 коинов</b> — <b>25 ⭐️</b>\n\n"
+            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⭐ Купить +100 коинов (25 ⭐️)", callback_data=f"buy:{owner}:stars100")],
+            [InlineKeyboardButton(text="◀️ Назад в магазин", callback_data=f"shop_cat:{owner}:main")]
+        ])
+    else:  # main
+        text = (
+            "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
+            "<i>Выберите интересующий вас раздел с помощью кнопок ниже 👇</i>\n\n"
+            f"💰 Ваш баланс: <b>{coins} 🪙</b>"
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Реальные призы и бонусы", callback_data=f"shop_cat:{owner}:real")],
+            [InlineKeyboardButton(text="⭐ Покупка коинов за Stars", callback_data=f"shop_cat:{owner}:stars")]
+        ])
+
+    await edit(c, text, markup)
     await c.answer()
 
 

@@ -305,10 +305,10 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "casino",
             "🎰 Казино ПОРОГА",
-            "Ставка до 50 🪙 • Красное/Белое (x2), Зеленое (x8) • 5 игр в сутки",
+            "Ставка до 50 🪙 • Красное/Черное (x2), Зеленое (x8) • 5 игр в сутки",
             (
                 "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)\n\n"
-                "• 🔴 <b>Красное</b> / ⚪️ <b>Белое</b> — выплата x2\n"
+                "• 🔴 <b>Красное</b> / ⬛️ <b>Черное</b> — выплата x2\n"
                 "• 🟢 <b>Зеленое</b> — Джекпот x8\n\n"
                 f"💰 Твой баланс: <b>{coins} 🪙</b>\n\n"
                 "<b>Выберите размер ставки:</b>"
@@ -396,7 +396,7 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
         f"🎰 <b>Казино ПОРОГА</b> (попытка {casino_count + 1}/5)\nСтавка: <b>{bet} 🪙</b>\n\n<i>Выберите цвет:</i>",
         kb(
             ("🔴 Красное (x2)", f"cas_play:{owner}:{bet}:red"),
-            ("⚪️ Белое (x2)", f"cas_play:{owner}:{bet}:white"),
+            ("⬛️ Черное (x2)", f"cas_play:{owner}:{bet}:black"),
             ("🟢 Зеленое (Джекпот x8)", f"cas_play:{owner}:{bet}:green"),
             ("⬅️ Изменить ставку", f"cas_back:{owner}")
         )
@@ -455,7 +455,7 @@ async def on_casino_play(c: types.CallbackQuery):
     if roll < 0.475:
         w_color, emoji, name = "red", "🔴", "Красное"
     elif roll < 0.95:
-        w_color, emoji, name = "white", "⚪️", "Белое"
+        w_color, emoji, name = "black", "⬛️", "Черное"
     else:
         w_color, emoji, name = "green", "🟢", "Зеленое (Джекпот)"
 

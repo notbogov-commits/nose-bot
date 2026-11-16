@@ -285,7 +285,6 @@ async def inline_query_menu(q: types.InlineQuery):
         )
 
     results = [
-        # Памятка и правила в самом верху меню
         article(
             "info",
             "📌 Правила и информация о боте",
@@ -680,10 +679,8 @@ async def on_buy(c: types.CallbackQuery):
         "tgprem": 800,
         "shield": 150,
         "boost": 50,
-        "stars100": 0,  # Оплата за звезды обрабатывается отдельно через Telegram Payments
     }
 
-    # Обработка покупки через Telegram Stars (пример через отправку инвойса)
     if item == "stars100":
         try:
             await bot.send_invoice(
@@ -691,8 +688,8 @@ async def on_buy(c: types.CallbackQuery):
                 title="Пополнение баланса",
                 description="Получите +100 коинов на игровой баланс бота ПОРОГ",
                 payload="buy_stars_100",
-                currency="XTR",  # Валюта Telegram Stars
-                prices=[types.LabeledPrice(label="100 коинов", amount=50)]  # 50 звезд
+                currency="XTR",
+                prices=[types.LabeledPrice(label="100 коинов", amount=50)]
             )
             await c.answer("Счет на оплату отправлен в личные сообщения с ботом!", show_alert=True)
         except Exception:
@@ -738,7 +735,7 @@ async def on_buy(c: types.CallbackQuery):
     await c.answer()
 
 
-# Обработка успешного платежа Telegram Stars
+# ---------- ОБРАБОТКА ТЕЛЕГРАМ ЗВЕЗД ( STARS ) ----------
 @dp.pre_checkout_query()
 async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
@@ -748,9 +745,10 @@ async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery):
 async def on_successful_payment(message: types.Message):
     if message.successful_payment.invoice_payload == "buy_stars_100":
         user_id = message.from_user.id
+        get_user(message.from_user) # гарантируем, что пользователь есть в базе
         db.execute("UPDATE users SET coins=coins+100 WHERE id=?", (user_id,))
         db.commit()
-        await message.answer("⭐️ Оплата прошла успешно! Вам начислено <b>+100 коинов</b> на баланс.", parse_mode="HTML")
+        await message.answer("⭐️ <b>Оплата прошла успешно!</b> Вам начислено <b>+100 коинов</b> на баланс.", parse_mode="HTML")
 
 
 # ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------

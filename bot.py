@@ -318,7 +318,6 @@ async def inline_query_menu(q: types.InlineQuery):
             f"<i>Нажми кнопку ниже для участия!</i>"
         )
 
-    # Если в строке инлайн-поиска введено число (например, "@бот 15"), используем его как ставку для казино
     custom_cas_bet = int(text) if text.isdigit() and int(text) > 0 else 5
 
     results = [
@@ -329,11 +328,11 @@ async def inline_query_menu(q: types.InlineQuery):
             (
                 "🎰 <b>Казино ПОРОГА</b>\n\n"
                 f"Текущая ставка: <b>{custom_cas_bet} 🪙</b>\n"
-                "<i>(Чтобы изменить ставку, напиши цифру после имени бота в строке поиска)</i>\n\n"
+                "<i>(Чтобы изменить ставку, напиши цифру после имени бота в поиске)</i>\n\n"
                 "<b>Шансы и выплаты:</b>\n"
-                "• 🔴 <b>Красное</b> — шанс 45% (Выплата: x2)\n"
-                "• ⚪️ <b>Белое</b> — шанс 45% (Выплата: x2)\n"
-                "• 🟢 <b>Зеленое</b> — шанс 10% (Джекпот: x8)\n\n"
+                "• 🔴 <b>Красное</b> — шанс 45% (x2)\n"
+                "• ⚪️ <b>Белое</b> — шанс 45% (x2)\n"
+                "• 🟢 <b>Зеленое</b> — шанс 10% (Джекпот x8)\n\n"
                 f"🪙 Твой баланс: <b>{coins} 🪙</b>"
             ),
             kb(
@@ -433,6 +432,21 @@ async def on_casino_play(c: types.CallbackQuery):
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! Нужно {bet} 🪙", show_alert=True)
 
+    # 1. Сначала списываем ставку
+    new_coins = u["coins"] - bet
+    db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+    db.commit()
+
+    # 2. Показываем процесс анимации рулетки/слота
+    await edit(c, f"🎰 <b>Казино ПОРОГА</b>\n\nСтавка: {bet} 🪙. <b>Крутим барабан...</b> 🎲")
+    
+    try:
+        await bot.send_dice(chat_id=c.message.chat.id, emoji="🎰")
+    except Exception:
+        pass
+    
+    await asyncio.sleep(3)
+
     roll = random.random()
     if roll < 0.45:
         winning_color = "red"
@@ -453,7 +467,7 @@ async def on_casino_play(c: types.CallbackQuery):
         multiplier = 8 if color == "green" else 2
         winnings = bet * multiplier
         profit = winnings - bet
-        new_coins = u["coins"] + profit
+        new_coins += winnings
         db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
         db.commit()
 
@@ -464,10 +478,6 @@ async def on_casino_play(c: types.CallbackQuery):
             f"🪙 Баланс: <b>{new_coins} 🪙</b>"
         )
     else:
-        new_coins = u["coins"] - bet
-        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
-        db.commit()
-
         msg = (
             f"🎰 <b>{emoji} Выпало: {name_color}</b>\n\n"
             f"❌ Ставка на {color_names[color]} ({bet} 🪙) не зашла.\n"

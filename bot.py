@@ -3,7 +3,6 @@ import datetime
 import os
 import random
 import sqlite3
-import time
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -24,10 +23,7 @@ ADMIN_ID = 1642626687  # Твой ID
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-# Словарь для защиты от спама
-last_action_time = {}
-
-# Инициализация базы данных
+# Инициализация базы данных и безопасное добавление новых колонок (миграция без потери данных)
 db = sqlite3.connect("game.db")
 db.row_factory = sqlite3.Row
 db.executescript(
@@ -52,6 +48,14 @@ db.executescript(
     """
 )
 db.commit()
+
+# Автоматически добавляем колонки для статистики казино, если их еще нет в старой базе
+try:
+    db.execute("ALTER TABLE users ADD COLUMN casino_won INTEGER DEFAULT 0")
+    db.execute("ALTER TABLE users ADD COLUMN casino_lost INTEGER DEFAULT 0")
+    db.commit()
+except sqlite3.OperationalError:
+    pass  # Колонка уже существует
 
 
 def get_user(user: types.User) -> sqlite3.Row:
@@ -101,11 +105,15 @@ def stats_text(user: types.User) -> str:
     u = get_user(user)
     title = get_toxicity_title(u)
     shield_str = f"\n🛡 Защитных щитов: {u['shield_count']}" if u["shield_count"] > 0 else ""
+    c_won = u["casino_won"] if "casino_won" in u.keys() else 0
+    c_lost = u["casino_lost"] if "casino_lost" in u.keys() else 0
+    
     return (
         f"📊 <b>Статистика игрока: {u['name']}</b>\n\n"
         f"🪙 Баланс: <b>{u['coins']} 🪙</b>\n"
         f"🏆 Статус: {title}{shield_str}\n"
-        f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n\n"
+        f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n"
+        f"🎰 Казино: выиграно <b>+{c_won} 🪙</b> | проиграно <b>-{c_lost} 🪙</b>\n\n"
         f"<i>💡 Все действия происходят внутри бота по кнопкам.</i>"
     )
 
@@ -121,7 +129,7 @@ def top_text() -> str:
 
 
 def do_bonus(user: types.User) -> str:
-    """Логика выдачи ежедневного бонуса (раз в 24 часа)."""
+    """Логика выдачи ежедневного бонуса (раз в 24 часа). С учетом буста x2."""
     u = get_user(user)
     now = datetime.datetime.now()
     
@@ -146,16 +154,15 @@ def do_bonus(user: types.User) -> str:
 
 
 def do_work(user: types.User) -> str:
-    """Логика вброса тейка в комментарии (раз в 6 часов, шанс 50/50)."""
+    """Логика вброса тейка в комментарии (раз в 1 час, шанс 50/50). С учетом буста x2."""
     u = get_user(user)
     now = datetime.datetime.now()
     if u["last_work"]:
         last_dt = datetime.datetime.fromisoformat(u["last_work"])
-        if now - last_dt < datetime.timedelta(hours=6):
-            time_left = datetime.timedelta(hours=6) - (now - last_dt)
-            hours, remainder = divmod(int(time_left.total_seconds()), 3600)
-            mins, _ = divmod(remainder, 60)
-            return f"⏳ Следующий вброс тейка доступен через {hours} ч. {mins} мин."
+        if now - last_dt < datetime.timedelta(hours=1):
+            time_left = datetime.timedelta(hours=1) - (now - last_dt)
+            mins, secs = divmod(int(time_left.total_seconds()), 60)
+            return f"⏳ Следующий вброс тейка доступен через {mins} мин. {secs} сек."
 
     gain = 3
     loss = 3
@@ -231,14 +238,14 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
+    # Зазывание нового пользователя в игру строго 1 раз в тредах канала
     if message.message_thread_id:
         user_id = message.from_user.id
         first_name = message.from_user.first_name
 
         already_invited = db.execute("SELECT 1 FROM invited_users WHERE user_id=?", (user_id,)).fetchone()
-        already_playing = db.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone()
 
-        if not already_invited and not already_playing:
+        if not already_invited:
             db.execute("INSERT OR IGNORE INTO invited_users (user_id) VALUES (?)", (user_id,))
             db.commit()
 
@@ -270,8 +277,8 @@ async def inline_query_menu(q: types.InlineQuery):
                 "🤖 <b>Что это за бот?</b> Официальная валюта канала, где ты можешь копить коины и обменивать их на реальные призы.\n\n"
                 "💡 <b>Как зарабатывать:</b>\n"
                 "• 🎁 Забирай <b>Ежедневный бонус</b> (+10 🪙 раз в сутки).\n"
-                "• 💬 Вбрасывай <b>Тейки</b> (раз в 6 часов, шанс 50/50).\n"
-                "• 🎰 Крути <b>Казино</b> (до 5 раз в сутки).\n"
+                "• 💬 Вбрасывай <b>Тейки</b> (раз в час, шанс 50/50).\n"
+                "• 🎰 Крути <b>Казино</b> (до 10 раз в сутки).\n"
                 "• ⚔️ Сражайся в <b>Дуэлях</b>.\n\n"
                 f"💰 Твой текущий баланс: <b>{coins} 🪙</b>"
             ),
@@ -291,7 +298,7 @@ async def inline_query_menu(q: types.InlineQuery):
                 "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
                 "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
                 "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
-                "<i>(Удваивает бонус и тейки на целый день)</i>\n\n"
+                "<i>(Удваивает бонус, тейки и все выигрыши на целый день)</i>\n\n"
                 f"💰 Ваш баланс: <b>{coins} 🪙</b>"
             ),
             InlineKeyboardMarkup(inline_keyboard=[
@@ -305,11 +312,12 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "casino",
             "🎰 Казино ПОРОГА",
-            "Ставка до 50 🪙 • Красное/Черное (x2), Зеленое (x8) • 5 игр в сутки",
+            "Ставка до 50 🪙 • Красное/Черное (x2), Зеленое (x8) • 10 игр в сутки",
             (
-                "🎰 <b>Казино ПОРОГА</b> (лимит: 5 раз в сутки)\n\n"
+                "🎰 <b>Казино ПОРОГА</b> (лимит: 10 раз в сутки)\n\n"
                 "• 🔴 <b>Красное</b> / ⬛️ <b>Черное</b> — выплата x2\n"
-                "• 🟢 <b>Зеленое</b> — Джекпот x8\n\n"
+                "• 🟢 <b>Зеленое</b> — Джекпот x8\n"
+                "<i>(💥 Буст x2 удваивает итоговый выигрыш!)</i>\n\n"
                 f"💰 Твой баланс: <b>{coins} 🪙</b>\n\n"
                 "<b>Выберите размер ставки:</b>"
             ),
@@ -347,8 +355,8 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "work",
             "💬 Вбросить тейк в комменты",
-            "Шанс 50/50 (+3 / -3 коина • раз в 6 часов)",
-            "💬 <b>Вбросить тейк</b>\n\nШанс 50 на 50: либо +3 коина, либо -3 коина.",
+            "Шанс 50/50 (+3 / -3 коина • раз в час)",
+            "💬 <b>Вбросить тейк</b>\n\nШанс 50 на 50: либо +3 коина, либо -3 коина (с бустом x2 — ±6 коинов!).",
             kb(("Вбросить тейк 💬", f"work:{uid}")),
         ),
         article(
@@ -385,11 +393,12 @@ async def on_bonus(c: types.CallbackQuery):
 async def on_work(c: types.CallbackQuery):
     if c.from_user.id != int(c.data.split(":")[1]):
         return await c.answer("Не твоя кнопка", show_alert=True)
-    await edit(c, do_work(c.from_user))
+    res_text = do_work(c.from_user)
+    await edit(c, res_text)
     await c.answer()
 
 
-# ---------- ЛОГИКА КАЗИНО ----------
+# ---------- ЛОГИКА КАЗИНО (до 10 раз в сутки + буст x2) ----------
 @dp.callback_query(F.data.startswith("cas_bet:"))
 async def on_casino_bet_chosen(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
@@ -401,14 +410,15 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
-    if casino_count >= 5:
-        return await c.answer("🚫 Лимит исчерпан! (5 игр в сутки).", show_alert=True)
+    
+    if casino_count >= 10:
+        return await c.answer("🚫 Лимит исчерпан! (10 игр в сутки).", show_alert=True)
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
 
     await edit(
         c,
-        f"🎰 <b>Казино ПОРОГА</b> (попытка {casino_count + 1}/5)\nСтавка: <b>{bet} 🪙</b>\n\n<i>Выберите цвет:</i>",
+        f"🎰 <b>Казино ПОРОГА</b> (попытка {casino_count + 1}/10)\nСтавка: <b>{bet} 🪙</b>\n\n<i>Выберите цвет:</i>",
         kb(
             ("🔴 Красное (x2)", f"cas_play:{owner}:{bet}:red"),
             ("⬛️ Черное (x2)", f"cas_play:{owner}:{bet}:black"),
@@ -451,7 +461,7 @@ async def on_casino_play(c: types.CallbackQuery):
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
-    if casino_count >= 5 or u["coins"] < bet:
+    if casino_count >= 10 or u["coins"] < bet:
         return await c.answer("Ошибка лимита или баланса!", show_alert=True)
 
     new_casino_count = casino_count + 1
@@ -474,15 +484,31 @@ async def on_casino_play(c: types.CallbackQuery):
     else:
         w_color, emoji, name = "green", "🟢", "Зеленое (Джекпот)"
 
+    c_won_add = u["casino_won"] if "casino_won" in u.keys() else 0
+    c_lost_add = u["casino_lost"] if "casino_lost" in u.keys() else 0
+
     if color == w_color:
         mult = 8 if color == "green" else 2
         winnings = bet * mult
+
+        # Проверяем активен ли буст x2, если да — удваиваем выигрыш еще раз!
+        boost_active = u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now
+        if boost_active:
+            winnings *= 2
+
+        net_win = winnings - bet
         new_coins += winnings
-        db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
-        db.commit()
-        msg = f"🎰 <b>{emoji} Выпало: {name}!</b>\nВыигрыш: <b>+{winnings - bet} 🪙</b>\nБаланс: <b>{new_coins} 🪙</b>"
+        c_won_add += net_win
+
+        msg_boost = " (💥 Буст x2 удвоил выигрыш!)" if boost_active else ""
+        msg = f"🎰 <b>{emoji} Выпало: {name}!</b>{msg_boost}\nВыигрыш: <b>+{net_win} 🪙</b>\nБаланс: <b>{new_coins} 🪙</b>"
     else:
+        net_loss = bet
+        c_lost_add += net_loss
         msg = f"🎰 <b>{emoji} Выпало: {name}</b>\nПроигрыш: <b>-{bet} 🪙</b>\nБаланс: <b>{new_coins} 🪙</b>"
+
+    db.execute("UPDATE users SET coins=?, casino_won=?, casino_lost=? WHERE id=?", (new_coins, c_won_add, c_lost_add, owner))
+    db.commit()
 
     await edit(c, msg)
     await c.answer()
@@ -555,7 +581,7 @@ async def on_buy(c: types.CallbackQuery):
         expiry = (datetime.datetime.now() + datetime.timedelta(days=1)).isoformat()
         db.execute("UPDATE users SET boost_until=? WHERE id=?", (expiry, owner))
         db.commit()
-        await edit(c, "💥 <b>Буст активирован!</b> На 24 часа бонус и тейки дают x2 коинов.")
+        await edit(c, "💥 <b>Буст активирован!</b> На 24 часа бонус, тейки и выигрыши в казино удваиваются!")
 
     await c.answer()
 

@@ -130,8 +130,41 @@ def get_toxicity_title(u: sqlite3.Row) -> str:
         return "Властелин"
 
 
-def stats_text(user: types.User) -> str:
+# ---------- ГЕНЕРАТОРЫ ЭКРАНОВ ДЛЯ НАВИГАЦИИ ----------
+def get_hub_screen(user: types.User) -> tuple[str, InlineKeyboardMarkup]:
     u = get_user(user)
+    uid = user.id
+    text = (
+        f"🔥 <b>ПОРОГ Коинов</b>\n\n"
+        f"🪙 Баланс: <b>{u['coins']}</b>\n\n"
+        f"Выберите раздел:"
+    )
+    markup = kb(
+        ("📌 F.A.Q", f"nav_faq:{uid}"),
+        ("👤 Мой профиль", f"nav_profile:{uid}"),
+        ("🎲 Игры и магазин", f"nav_games:{uid}"),
+        ("🏆 Таблица лидеров", f"nav_top:{uid}"),
+    )
+    return text, markup
+
+
+def get_faq_screen(uid: int) -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "📌 <b>Привет! Это ПОРОГ Коинов</b>\n\n"
+        "Добро пожаловать в мини-игру канала ПОРОГ. Здесь можно испытывать удачу, бросать вызовы другим участникам и копить монеты на призы.\n\n"
+        "<b>Как всё устроено:</b>\n"
+        "• Разработчик: автор канала ПОРОГ\n"
+        "• Реальные деньги не используются\n"
+        "• Комментарии в канале не начисляют и не списывают монеты\n"
+        "• Все игры и покупки проходят только внутри бота по кнопкам"
+    )
+    markup = kb(("⬅️ Назад", f"nav_hub:{uid}"))
+    return text, markup
+
+
+def get_profile_screen(user: types.User) -> tuple[str, InlineKeyboardMarkup]:
+    u = get_user(user)
+    uid = user.id
     title = get_toxicity_title(u)
     shield_str = f"\n🛡 Щиты: {u['shield_count']}" if u["shield_count"] > 0 else ""
     boost_str = "\n🎟 Буст x2: активен" if has_boost(u) else ""
@@ -140,28 +173,56 @@ def stats_text(user: types.User) -> str:
     streak = u["streak"] or 0
     activity = u["activity_score"] or 0
 
-    return (
+    text = (
         f"👤 <b>Профиль: {u['name']}</b>\n\n"
         f"🪙 Баланс: <b>{u['coins']}</b>\n"
         f"🏆 Статус: {title}{shield_str}{boost_str}\n"
         f"🔥 Стрик бонусов: {streak}/10 дней\n"
         f"⚡️ Активность: {activity}\n"
         f"⚔️ Дуэли: побед {u['wins']} / поражений {u['losses']}\n"
-        f"🎰 Казино: +{c_won} / -{c_lost}"
+        f"🎰 Казино: +{c_won} / -{c_lost}\n\n"
+        f"<i>Бонус растет со стриком до 10 дней. Банкротство обнуляет долги до 0 раз в неделю при минусовом балансе.</i>"
     )
+    markup = kb(
+        ("🎁 Забрать бонус", f"bonus:{uid}"),
+        ("💬 Вбросить тейк", f"work:{uid}"),
+        ("🏛 Банкрот", f"bankrupt:{uid}"),
+        ("⬅️ Назад", f"nav_hub:{uid}"),
+    )
+    return text, markup
 
 
-def top_text() -> str:
+def get_games_screen(user: types.User) -> tuple[str, InlineKeyboardMarkup]:
+    u = get_user(user)
+    uid = user.id
+    text = (
+        f"🎲 <b>Игры и магазин</b>\n\n"
+        f"🪙 Баланс: <b>{u['coins']}</b>\n\n"
+        f"<i>В играх доступны ставки 5, 10, 15, 20 и 50. Можно уходить в минус.</i>"
+    )
+    markup = kb(
+        ("🎰 Казино", f"cas_menu:{uid}"),
+        ("⚔️ Дуэль", f"duel_menu:{uid}"),
+        ("🎡 Рулетка", f"open_roulette:{uid}"),
+        ("🛒 Магазин", f"shop_menu:{uid}"),
+        ("⬅️ Назад", f"nav_hub:{uid}"),
+    )
+    return text, markup
+
+
+def get_top_screen(uid: int) -> tuple[str, InlineKeyboardMarkup]:
     rows_coins = db.execute("SELECT name, coins FROM users ORDER BY coins DESC LIMIT 10").fetchall()
     lines_coins = [f"{i + 1}. {r['name']} — {r['coins']}" for i, r in enumerate(rows_coins)] or ["Пусто"]
 
     rows_act = db.execute("SELECT name, activity_score FROM users ORDER BY activity_score DESC LIMIT 10").fetchall()
     lines_act = [f"{i + 1}. {r['name']} — {r['activity_score']}" for i, r in enumerate(rows_act)] or ["Пусто"]
 
-    return (
+    text = (
         f"🏆 <b>Топ по монетам</b>\n" + "\n".join(lines_coins) + "\n\n"
         f"⚡️ <b>Топ по активности</b>\n" + "\n".join(lines_act)
     )
+    markup = kb(("⬅️ Назад", f"nav_hub:{uid}"))
+    return text, markup
 
 
 # ---------- РУЛЕТКА (30 МИНУТ ПОСЛЕ 1 СТАВКИ) ----------
@@ -246,7 +307,7 @@ def get_roulette_content(owner_id: int) -> tuple[str, InlineKeyboardMarkup]:
         ("➕ 15", f"r_bet:{owner_id}:15"),
         ("➕ 20", f"r_bet:{owner_id}:20"),
         ("➕ 50", f"r_bet:{owner_id}:50"),
-        ("⬅️ Назад", f"cas_back_main:{owner_id}"),
+        ("⬅️ Назад", f"nav_games:{owner_id}"),
     )
     return text, markup
 
@@ -406,58 +467,16 @@ async def inline_query_menu(q: types.InlineQuery):
     check_and_run_roulette()
 
     uid = q.from_user.id
-    u = get_user(q.from_user)
-    coins = u["coins"]
+    faq_text, faq_kb = get_faq_screen(uid)
+    prof_text, prof_kb = get_profile_screen(q.from_user)
+    games_text, games_kb = get_games_screen(q.from_user)
+    top_txt, top_kb = get_top_screen(uid)
 
     results = [
-        article(
-            "faq",
-            "📌 F.A.Q",
-            "О боте ПОРОГ Коинов и правилах",
-            (
-                "📌 <b>Привет! Это ПОРОГ Коинов</b>\n\n"
-                "Добро пожаловать в мини-игру канала ПОРОГ. Здесь можно испытывать удачу, бросать вызовы другим участникам и копить монеты на призы.\n\n"
-                "<b>Как всё устроено:</b>\n"
-                "• Разработчик: автор канала ПОРОГ\n"
-                "• Реальные деньги не используются\n"
-                "• Комментарии в канале не начисляют и не списывают монеты\n"
-                "• Все игры и покупки проходят только внутри бота по кнопкам"
-            ),
-        ),
-        article(
-            "profile",
-            "👤 Мой профиль",
-            "Статистика, бонус, тейки и банкротство",
-            stats_text(q.from_user)
-            + "\n\n<i>Бонус растет со стриком до 10 дней. Банкротство обнуляет долги до 0 раз в неделю при минусовом балансе.</i>",
-            kb(
-                ("🎁 Забрать бонус", f"bonus:{uid}"),
-                ("💬 Вбросить тейк", f"work:{uid}"),
-                ("🏛 Банкрот", f"bankrupt:{uid}"),
-            ),
-        ),
-        article(
-            "casino_duels",
-            "🎲 Игры и магазин",
-            "Казино, дуэли, рулетка и магазин призов",
-            (
-                f"🎲 <b>Игры и магазин</b>\n\n"
-                f"🪙 Баланс: <b>{coins}</b>\n\n"
-                f"<i>В играх доступны ставки 5, 10, 15, 20 и 50. Можно уходить в минус.</i>"
-            ),
-            kb(
-                ("🎰 Казино", f"cas_menu:{uid}"),
-                ("⚔️ Дуэль", f"duel_menu:{uid}"),
-                ("🎡 Рулетка", f"open_roulette:{uid}"),
-                ("🛒 Магазин", f"shop_menu:{uid}"),
-            ),
-        ),
-        article(
-            "top",
-            "🏆 Таблица лидеров",
-            "Топ по монетам и активности",
-            top_text(),
-        ),
+        article("faq", "📌 F.A.Q", "О боте ПОРОГ Коинов и правилах", faq_text, faq_kb),
+        article("profile", "👤 Мой профиль", "Статистика, бонус, тейки и банкротство", prof_text, prof_kb),
+        article("casino_duels", "🎲 Игры и магазин", "Казино, дуэли, рулетка и магазин призов", games_text, games_kb),
+        article("top", "🏆 Таблица лидеров", "Топ по монетам и активности", top_txt, top_kb),
     ]
 
     await q.answer(results, cache_time=0, is_personal=True)
@@ -472,13 +491,70 @@ async def edit(c: types.CallbackQuery, text: str, markup=None):
     )
 
 
+# ---------- ОБЩАЯ НАВИГАЦИЯ (КНОПКИ НАЗАД) ----------
+@dp.callback_query(F.data.startswith("nav_hub:"))
+async def on_nav_hub(c: types.CallbackQuery):
+    add_activity(c.from_user.id)
+    owner = int(c.data.split(":")[1])
+    if c.from_user.id != owner:
+        return await c.answer("Чужое меню", show_alert=True)
+    text, markup = get_hub_screen(c.from_user)
+    await edit(c, text, markup)
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("nav_faq:"))
+async def on_nav_faq(c: types.CallbackQuery):
+    add_activity(c.from_user.id)
+    owner = int(c.data.split(":")[1])
+    if c.from_user.id != owner:
+        return await c.answer("Чужое меню", show_alert=True)
+    text, markup = get_faq_screen(owner)
+    await edit(c, text, markup)
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("nav_profile:"))
+async def on_nav_profile(c: types.CallbackQuery):
+    add_activity(c.from_user.id)
+    owner = int(c.data.split(":")[1])
+    if c.from_user.id != owner:
+        return await c.answer("Чужое меню", show_alert=True)
+    text, markup = get_profile_screen(c.from_user)
+    await edit(c, text, markup)
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("nav_games:"))
+async def on_nav_games(c: types.CallbackQuery):
+    add_activity(c.from_user.id)
+    owner = int(c.data.split(":")[1])
+    if c.from_user.id != owner:
+        return await c.answer("Чужое меню", show_alert=True)
+    text, markup = get_games_screen(c.from_user)
+    await edit(c, text, markup)
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("nav_top:"))
+async def on_nav_top(c: types.CallbackQuery):
+    add_activity(c.from_user.id)
+    owner = int(c.data.split(":")[1])
+    if c.from_user.id != owner:
+        return await c.answer("Чужое меню", show_alert=True)
+    text, markup = get_top_screen(owner)
+    await edit(c, text, markup)
+    await c.answer()
+
+
+# ---------- ПРОФИЛЬ: БОНУС, ТЕЙК, БАНКРОТ ----------
 @dp.callback_query(F.data.startswith("bonus:"))
 async def on_bonus(c: types.CallbackQuery):
     add_activity(c.from_user.id)
     owner = int(c.data.split(":")[1])
     if c.from_user.id != owner:
         return await c.answer("Чужая кнопка", show_alert=True)
-    await edit(c, do_bonus(c.from_user))
+    await edit(c, do_bonus(c.from_user), kb(("⬅️ Назад", f"nav_profile:{owner}")))
     await c.answer()
 
 
@@ -488,7 +564,7 @@ async def on_work(c: types.CallbackQuery):
     owner = int(c.data.split(":")[1])
     if c.from_user.id != owner:
         return await c.answer("Чужая кнопка", show_alert=True)
-    await edit(c, do_work(c.from_user))
+    await edit(c, do_work(c.from_user), kb(("⬅️ Назад", f"nav_profile:{owner}")))
     await c.answer()
 
 
@@ -499,6 +575,11 @@ async def on_bankrupt(c: types.CallbackQuery):
     if c.from_user.id != owner:
         return await c.answer("Чужая кнопка", show_alert=True)
     res = do_bankrupt(c.from_user)
+    text, markup = get_profile_screen(c.from_user)
+    try:
+        await edit(c, text, markup)
+    except Exception:
+        pass
     await c.answer(res, show_alert=True)
 
 
@@ -523,7 +604,7 @@ async def on_casino_menu(c: types.CallbackQuery):
             ("15", f"cas_bet:{owner}:15"),
             ("20", f"cas_bet:{owner}:20"),
             ("50", f"cas_bet:{owner}:50"),
-            ("⬅️ Назад", f"cas_back_main:{owner}"),
+            ("⬅️ Назад", f"nav_games:{owner}"),
         ),
     )
     await c.answer()
@@ -632,7 +713,7 @@ async def on_casino_play(c: types.CallbackQuery):
     )
     db.commit()
 
-    await edit(c, msg, kb(("🎰 Играть еще", f"cas_menu:{owner}"), ("⬅️ Меню", f"cas_back_main:{owner}")))
+    await edit(c, msg, kb(("🎰 Играть еще", f"cas_menu:{owner}"), ("⬅️ Назад", f"nav_games:{owner}")))
     await c.answer()
 
 
@@ -657,7 +738,7 @@ async def on_duel_menu(c: types.CallbackQuery):
             ("15", f"duel_create:{owner}:15"),
             ("20", f"duel_create:{owner}:20"),
             ("50", f"duel_create:{owner}:50"),
-            ("⬅️ Назад", f"cas_back_main:{owner}"),
+            ("⬅️ Назад", f"nav_games:{owner}"),
         ),
     )
     await c.answer()
@@ -674,7 +755,6 @@ async def on_duel_create(c: types.CallbackQuery):
     u = get_user(c.from_user)
     now = datetime.datetime.now()
 
-    # Чистим просроченные дуэли (старше 10 минут)
     ten_mins_ago = (now - datetime.timedelta(minutes=10)).isoformat()
     db.execute("DELETE FROM active_duels WHERE created_at < ?", (ten_mins_ago,))
 
@@ -755,29 +835,6 @@ async def on_duel_accept(c: types.CallbackQuery):
     await c.answer()
 
 
-@dp.callback_query(F.data.startswith("cas_back_main:"))
-async def on_cas_back_main(c: types.CallbackQuery):
-    add_activity(c.from_user.id)
-    owner = int(c.data.split(":")[1])
-    if c.from_user.id != owner:
-        return await c.answer("Чужое меню", show_alert=True)
-
-    u = get_user(c.from_user)
-    await edit(
-        c,
-        f"🎲 <b>Игры и магазин</b>\n\n"
-        f"🪙 Баланс: <b>{u['coins']}</b>\n\n"
-        f"<i>В играх доступны ставки 5, 10, 15, 20 и 50. Можно уходить в минус.</i>",
-        kb(
-            ("🎰 Казино", f"cas_menu:{owner}"),
-            ("⚔️ Дуэль", f"duel_menu:{owner}"),
-            ("🎡 Рулетка", f"open_roulette:{owner}"),
-            ("🛒 Магазин", f"shop_menu:{owner}"),
-        ),
-    )
-    await c.answer()
-
-
 # ---------- РУЛЕТКА ----------
 @dp.callback_query(F.data.startswith("open_roulette:"))
 async def on_open_roulette(c: types.CallbackQuery):
@@ -851,7 +908,7 @@ async def on_shop_menu(c: types.CallbackQuery):
                 [InlineKeyboardButton(text="⭐ Премиум (1600)", callback_data=f"buy:{owner}:tgprem")],
                 [InlineKeyboardButton(text="🛡 Щиты (150)", callback_data=f"buy:{owner}:shield")],
                 [InlineKeyboardButton(text="🎟 Буст (50)", callback_data=f"buy:{owner}:boost")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cas_back_main:{owner}")],
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"nav_games:{owner}")],
             ]
         ),
     )
@@ -879,7 +936,7 @@ async def on_buy(c: types.CallbackQuery):
     db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
     db.commit()
 
-    back_kb = kb(("🛒 В магазин", f"shop_menu:{owner}"), ("⬅️ Меню", f"cas_back_main:{owner}"))
+    back_kb = kb(("⬅️ Назад", f"shop_menu:{owner}"))
 
     if item == "theme":
         await edit(c, "🎉 Тема ролика куплена. Уведомление отправлено автору.", back_kb)

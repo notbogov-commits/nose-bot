@@ -57,12 +57,6 @@ db.executescript(
         key TEXT PRIMARY KEY,
         value TEXT
     );
-    CREATE TABLE IF NOT EXISTS active_duels (
-        duel_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        creator_id INTEGER,
-        creator_name TEXT,
-        bet INTEGER
-    );
     """
 )
 db.commit()
@@ -98,49 +92,49 @@ def get_toxicity_title(u: sqlite3.Row) -> str:
         return u["custom_status"]
     coins = u["coins"]
     if coins < 0:
-        return "Главный должник и клоун чата"
+        return "Должник"
     elif coins <= 5:
-        return "Тихоня"
+        return "Новичок"
     elif coins <= 20:
         return "Комментатор"
     elif coins <= 50:
         return "Активист"
     elif coins <= 100:
-        return "Уважаемый душнила"
+        return "Эксперт"
     else:
-        return "Властелин комментов"
+        return "Властелин"
 
 
 def stats_text(user: types.User) -> str:
     u = get_user(user)
     title = get_toxicity_title(u)
-    shield_str = f"\n🛡 Защитных щитов: {u['shield_count']}" if u["shield_count"] > 0 else ""
+    shield_str = f"\n🛡 Щиты: {u['shield_count']}" if u["shield_count"] > 0 else ""
     c_won = u["casino_won"] if "casino_won" in u.keys() else 0
     c_lost = u["casino_lost"] if "casino_lost" in u.keys() else 0
     streak = u["streak"] if "streak" in u.keys() else 0
     activity = u["activity_score"] if "activity_score" in u.keys() else 0
     
     return (
-        f"📊 Личная статистика: {u['name']}\n\n"
-        f"🪙 Баланс: {u['coins']} 🪙\n"
+        f"👤 Профиль: {u['name']}\n\n"
+        f"🪙 Баланс: {u['coins']}\n"
         f"🏆 Статус: {title}{shield_str}\n"
-        f"🔥 Стрик бонусов: {streak}/10 дней\n"
-        f"⚡️ Очки активности: {activity}\n"
-        f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n"
-        f"🎰 Казино: выиграно +{c_won} 🪙 | проиграно -{c_lost} 🪙"
+        f"🔥 Стрик бонусов: {streak} дней\n"
+        f"⚡️ Активность: {activity}\n"
+        f"⚔️ Дуэли: побед {u['wins']} / поражений {u['losses']}\n"
+        f"🎰 Казино: +{c_won} / -{c_lost}"
     )
 
 
 def top_text() -> str:
     rows_coins = db.execute("SELECT name, coins FROM users ORDER BY coins DESC LIMIT 10").fetchall()
-    lines_coins = [f"{i + 1}. {r['name']} — {r['coins']} 🪙" for i, r in enumerate(rows_coins)] or ["Ещё пусто"]
+    lines_coins = [f"{i + 1}. {r['name']} — {r['coins']}" for i, r in enumerate(rows_coins)] or ["Пусто"]
 
     rows_act = db.execute("SELECT name, activity_score FROM users ORDER BY activity_score DESC LIMIT 10").fetchall()
-    lines_act = [f"{i + 1}. {r['name']} — {r['activity_score']} очков" for i, r in enumerate(rows_act)] or ["Ещё пусто"]
+    lines_act = [f"{i + 1}. {r['name']} — {r['activity_score']}" for i, r in enumerate(rows_act)] or ["Пусто"]
 
     return (
-        f"🏆 Топ-10 по количеству монет:\n" + "\n".join(lines_coins) + "\n\n"
-        f"⚡️ Топ-10 по активности в боте:\n" + "\n".join(lines_act)
+        f"🏆 Топ по монетам:\n" + "\n".join(lines_coins) + "\n\n"
+        f"⚡️ Топ по активности:\n" + "\n".join(lines_act)
     )
 
 
@@ -166,7 +160,7 @@ def check_and_run_roulette() -> str:
             winner = random.choice(participants)
             db.execute("UPDATE users SET coins = coins + ? WHERE id = ?", (total_bank, winner["user_id"]))
             db.commit()
-            announcement = f"🎡 Итоги получасовой рулетки ПОРОГ Коинов!\nБанк: {total_bank} 🪙\nПобедитель: {winner['name']} забирает весь куш! 🎉\n\n"
+            announcement = f"🎡 Итоги рулетки\nБанк: {total_bank}\nПобедитель: {winner['name']}\n\n"
         
         db.execute("DELETE FROM roulette_bids")
         new_next_spin = (now + datetime.timedelta(minutes=30)).isoformat()
@@ -186,9 +180,9 @@ def get_roulette_content() -> tuple[str, InlineKeyboardMarkup]:
         if time_left.total_seconds() < 0:
             time_left = datetime.timedelta(0)
         mins, secs = divmod(int(time_left.total_seconds()), 60)
-        timer_str = f"{mins:02d} мин. {secs:02d} сек."
+        timer_str = f"{mins:02d}:{secs:02d}"
     else:
-        timer_str = "30 мин. 00 сек."
+        timer_str = "30:00"
 
     bids = db.execute("SELECT * FROM roulette_bids").fetchall()
     total_bank = sum(b["amount"] for b in bids)
@@ -197,25 +191,24 @@ def get_roulette_content() -> tuple[str, InlineKeyboardMarkup]:
     if bids:
         for b in bids:
             chance = (b["amount"] / total_bank) * 100
-            roulette_lines.append(f"• {b['name']} — вложил {b['amount']} 🪙 (шанс на куш: {chance:.1f}%)")
+            roulette_lines.append(f"• {b['name']} — {b['amount']} ({chance:.1f}%)")
     else:
-        roulette_lines.append("<i>Пока никто не сделал ставку. Стань первым!</i>")
+        roulette_lines.append("Ставок пока нет")
 
     text = (
-        f"🎡 Получасовая рулетка ПОРОГ Коинов\n\n"
-        f"⏱ До новой крутки: {timer_str}\n"
-        f"💰 Общий банк: {total_bank} 🪙\n"
-        f"Розыгрыш каждые 30 минут. Больше вложил — выше шанс на куш!\n\n"
-        f"Список участников:\n" + "\n".join(roulette_lines) + f"\n\n"
-        f"Сделай ставку в банк:"
+        f"🎡 Получасовая рулетка\n\n"
+        f"⏱ До розыгрыша: {timer_str}\n"
+        f"💰 Банк: {total_bank}\n\n"
+        f"Участники:\n" + "\n".join(roulette_lines) + f"\n\n"
+        f"Сделать ставку:"
     )
     markup = kb(
-        ("➕ Вложить 5 🪙", "r_bet:5"),
-        ("➕ Вложить 10 🪙", "r_bet:10"),
-        ("➕ Вложить 15 🪙", "r_bet:15"),
-        ("➕ Вложить 20 🪙", "r_bet:20"),
-        ("➕ Вложить 50 🪙", "r_bet:50"),
-        ("⬅️ Назад в казино и дуэли", "cas_back_main")
+        ("➕ 5", "r_bet:5"),
+        ("➕ 10", "r_bet:10"),
+        ("➕ 15", "r_bet:15"),
+        ("➕ 20", "r_bet:20"),
+        ("➕ 50", "r_bet:50"),
+        ("⬅️ Назад", "cas_back_main")
     )
     return text, markup
 
@@ -233,8 +226,8 @@ def do_bonus(user: types.User) -> str:
         if diff < datetime.timedelta(days=1):
             time_left = datetime.timedelta(days=1) - diff
             hours, remainder = divmod(int(time_left.total_seconds()), 3600)
-            mins, secs = divmod(remainder, 60)
-            return f"⏳ Бонус уже получен! До следующей попытки: {hours} ч. {mins} мин. {secs} сек.\n🔥 Текущий стрик: {streak}/10 дней."
+            mins, _ = divmod(remainder, 60)
+            return f"⏳ Бонус уже получен. До следующего: {hours}ч {mins}м.\n🔥 Стрик: {streak}/10 дней."
         elif diff > datetime.timedelta(days=2):
             streak = 0
 
@@ -248,25 +241,24 @@ def do_bonus(user: types.User) -> str:
     db.execute("UPDATE users SET coins=?, last_bonus=?, streak=? WHERE id=?", (new_coins, now.isoformat(), streak, user.id))
     db.commit()
     
-    boost_note = f" (💥 Буст x2: +{base_delta} из воздуха!)" if boost_active else ""
-    return f"🎁 Бонус забран (День {streak}/10)! Начислено +{total_delta} 🪙{boost_note}\n🪙 Баланс: {new_coins} 🪙"
+    boost_note = " (Буст x2)" if boost_active else ""
+    return f"🎁 Бонус получен (+{total_delta}){boost_note}\n🪙 Баланс: {new_coins}"
 
 
 def do_bankrupt(user: types.User) -> str:
     u = get_user(user)
     if u["coins"] >= 0:
-        return "🚫 Функция «Банкрот» доступна только тем, у кого отрицательный баланс (долги)."
+        return "Доступно только при отрицательном балансе."
     
     now = datetime.datetime.now()
     if u["last_bankrupt"]:
         last_dt = datetime.datetime.fromisoformat(u["last_bankrupt"])
         if now - last_dt < datetime.timedelta(days=7):
-            time_left = datetime.timedelta(days=7) - (now - last_dt)
-            return f"⏳ Банкротство доступно раз в неделю! Осталось ждать: {time_left.days} дн. {int(time_left.seconds/3600)} ч."
+            return "Банкротство доступно раз в неделю."
 
     db.execute("UPDATE users SET coins=0, last_bankrupt=? WHERE id=?", (now.isoformat(), user.id))
     db.commit()
-    return "🏛 Банкротство успешно! Все твои долги аннулированы, баланс обнулен до 0 🪙."
+    return "🏛 Долги списаны. Баланс обнулен."
 
 
 def do_work(user: types.User) -> str:
@@ -279,7 +271,7 @@ def do_work(user: types.User) -> str:
         if now - last_dt < datetime.timedelta(hours=1):
             time_left = datetime.timedelta(hours=1) - (now - last_dt)
             mins, secs = divmod(int(time_left.total_seconds()), 60)
-            return f"⏳ Лимит вбросов исчерпан! Ждать: {mins} мин. {secs} сек."
+            return f"⏳ Лимит исчерпан. Ждать: {mins}м {secs}с"
 
     base_gain = 3
     base_loss = 3
@@ -289,11 +281,11 @@ def do_work(user: types.User) -> str:
     if success:
         gain = base_gain + (base_gain if boost_active else 0)
         new_coins = u["coins"] + gain
-        msg = f"💬 Тейк зашел! Получено +{gain} 🪙.\n🪙 Баланс: {new_coins} 🪙"
+        msg = f"💬 Успех (+{gain})\n🪙 Баланс: {new_coins}"
     else:
         loss = base_loss + (base_loss if boost_active else 0)
         new_coins = u["coins"] - loss
-        msg = f"📉 Кринж... Потеряно -{loss} 🪙.\n🪙 Баланс: {new_coins} 🪙"
+        msg = f"📉 Провал (-{loss})\n🪙 Баланс: {new_coins}"
 
     db.execute("UPDATE users SET coins=?, last_work=? WHERE id=?", (new_coins, now.isoformat(), user.id))
     db.commit()
@@ -323,7 +315,7 @@ async def admin_add_coins(m: types.Message):
     db.execute("UPDATE users SET coins=coins+? WHERE id=?", (amount, m.from_user.id))
     db.commit()
     u = get_user(m.from_user)
-    await m.reply(f"👑 Накрутка: {amount:+d} 🪙. Баланс: {u['coins']} 🪙")
+    await m.reply(f"Баланс изменен: {amount:+d}. Всего: {u['coins']}")
 
 
 @dp.message(Command("backup"))
@@ -331,7 +323,7 @@ async def admin_backup_db(m: types.Message):
     if m.from_user.id != ADMIN_ID:
         return
     if os.path.exists("game.db"):
-        await m.answer_document(FSInputFile("game.db"), caption="📦 Бэкап game.db")
+        await m.answer_document(FSInputFile("game.db"), caption="Резервная копия базы данных")
 
 
 @dp.message(Command("start"))
@@ -339,7 +331,7 @@ async def start(m: types.Message):
     get_user(m.from_user)
     add_activity(m.from_user.id)
     bot_info = await bot.get_me()
-    await m.answer(f"👋 Бот ПОРОГ Коинов запущен! Напиши <code>@{bot_info.username}</code> в чате канала.", parse_mode="HTML")
+    await m.answer(f"Бот запущен. Напишите <code>@{bot_info.username}</code> в чате.", parse_mode="HTML")
 
 
 @dp.message()
@@ -351,29 +343,15 @@ async def handle_all_messages(message: types.Message):
     text_lower = message.text.lower() if message.text else ""
 
     if text_lower in ["!игра", "игра", "/game"]:
-        welcome_text = "🔥 Игровая экосистема ПОРОГ Коинов:"
+        welcome_text = "Игровая экономика канала ПОРОГ:"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎮 Открыть меню игры", switch_inline_query_current_chat="")]
+            [InlineKeyboardButton(text="🎮 Открыть меню", switch_inline_query_current_chat="")]
         ])
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    if message.message_thread_id:
-        user_id = message.from_user.id
-        first_name = message.from_user.first_name
-        already_invited = db.execute("SELECT 1 FROM invited_users WHERE user_id=?", (user_id,)).fetchone()
 
-        if not already_invited:
-            db.execute("INSERT OR IGNORE INTO invited_users (user_id) VALUES (?)", (user_id,))
-            db.commit()
-            teaser = f"🔥 {first_name}, залетай в экономику ПОРОГ Коинов! Копи валюту и забирай призы 👇"
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎮 Открыть меню игры", switch_inline_query_current_chat="")]
-            ])
-            await message.reply(teaser, reply_markup=keyboard, parse_mode="HTML")
-
-
-# ---------- ГЛАВНОЕ ИНЛАЙН-МЕНЮ (СТРОГО С ЭМОДЗИ В НАЧАЛЕ И БЕЗ НУМЕРАЦИИ) ----------
+# ---------- ГЛАВНОЕ МЕНЮ ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
     add_activity(q.from_user.id)
@@ -384,60 +362,52 @@ async def inline_query_menu(q: types.InlineQuery):
     coins = u["coins"]
 
     results = [
-        # ПУНКТ 1: F.A.Q
         article(
             "faq",
-            "📌 F.A.Q (О боте ПОРОГ Коинов)",
-            "Правила, информация об авторе и гарантии безопасности",
+            "📌 Правила и информация",
+            "Справка о проекте и безопасности",
             (
-                "📌 Добро пожаловать в ПОРОГ Коинов!\n\n"
-                "🤖 Что это за бот?\n"
-                "Официальная игровая экономика и валюта канала. Зарабатывайте коины, соревнуйтесь и обменивайте их на призы.\n\n"
-                "👤 Кто разработчик?\n"
-                "Проект создан автором YouTube-канала ПОРОГ.\n\n"
-                "💡 Важная информация:\n"
-                "• Реальные деньги или платежные системы не используются.\n"
-                "• Все игры, ставки и магазины происходят исключительно внутри бота по кнопкам.\n"
-                "• Комментарии в Telegram-канале не начисляют валюту автоматически — всё управление здесь!"
+                "📌 О проекте ПОРОГ Коинов\n\n"
+                "Официальная валюта канала. Зарабатывайте монеты, играйте и обменивайте на призы.\n\n"
+                "• Без реальных денег\n"
+                "• Управление только через бота\n"
+                "• Автор: канал ПОРОГ"
             )
         ),
         
-        # ПУНКТ 2: Мой профиль
         article(
             "profile",
-            "👤 Мой профиль, Бонус & Банкрот",
-            "Статистика, ежедневный бонус, вброс тейков и банкротство",
-            stats_text(q.from_user) + "\n\n<i>Выберите действие ниже:</i>",
+            "👤 Мой профиль",
+            "Статистика, бонус, тейки и банкротство",
+            stats_text(q.from_user) + "\n\nВыберите действие:",
             kb(
-                ("Забрать бонус 🎁", f"bonus:{uid}"),
+                ("🎁 Забрать бонус", f"bonus:{uid}"),
                 ("💬 Вбросить тейк", f"work:{uid}"),
-                ("🏛 Списать долги (Банкрот)", f"bankrupt:{uid}")
+                ("🏛 Банкрот", f"bankrupt:{uid}")
             )
         ),
 
-        # ПУНКТ 3: Казино, Дуэли и Магазин
         article(
             "casino_duels",
-            "🎲 Казино, Дуэли & Магазин",
-            "Сыграй в казино, запусти дуэль, открой рулетку или загляни в магазин призов",
+            "🎲 Игры и магазин",
+            "Казино, дуэли, рулетка и магазин призов",
             (
-                f"🎲 Казино, Дуэли и Магазин ПОРОГ Коинов\n\n"
-                f"💰 Твой баланс: {coins} 🪙\n\n"
+                f"🎲 Игровой зал\n\n"
+                f"🪙 Баланс: {coins}\n\n"
                 f"Выберите раздел:"
             ),
             kb(
-                ("🎰 Казино (ставка 5, 10, 15, 20, 50)", f"cas_menu:{uid}"),
-                ("⚔️ Создать Дуэль (ставка 5, 10, 15, 20, 50)", f"duel_menu:{uid}"),
-                ("🎡 Получасовая Рулетка (Джекпот)", f"open_roulette:{uid}"),
-                ("🛒 Магазин призов ПОРОГА", f"shop_menu:{uid}")
+                ("🎰 Казино", f"cas_menu:{uid}"),
+                ("⚔️ Дуэль", f"duel_menu:{uid}"),
+                ("🎡 Рулетка", f"open_roulette:{uid}"),
+                ("🛒 Магазин", f"shop_menu:{uid}")
             )
         ),
 
-        # ПУНКТ 4: Таблица лидеров
         article(
             "top",
             "🏆 Таблица лидеров",
-            "Топ по количеству монет и по активности в боте",
+            "Топ по монетам и активности",
             top_text()
         )
     ]
@@ -470,25 +440,25 @@ async def on_bankrupt(c: types.CallbackQuery):
     await c.answer(res, show_alert=True)
 
 
-# ---------- КАЗИНО (ФИКСИРОВАННЫЕ СТАВКИ 5, 10, 15, 20, 50) ----------
+# ---------- КАЗИНО ----------
 @dp.callback_query(F.data.startswith("cas_menu:"))
 async def on_casino_menu(c: types.CallbackQuery):
     add_activity(c.from_user.id)
     owner = int(c.data.split(":")[1])
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужое меню", show_alert=True)
     
     u = get_user(c.from_user)
     await edit(
         c,
-        f"🎰 Казино ПОРОГ Коинов\n💰 Баланс: {u['coins']} 🪙\n\nВыберите размер ставки:",
+        f"🎰 Казино\n🪙 Баланс: {u['coins']}\n\nВыберите ставку:",
         kb(
-            ("5 🪙", f"cas_bet:{owner}:5"),
-            ("10 🪙", f"cas_bet:{owner}:10"),
-            ("15 🪙", f"cas_bet:{owner}:15"),
-            ("20 🪙", f"cas_bet:{owner}:20"),
-            ("50 🪙", f"cas_bet:{owner}:50"),
-            ("⬅️ Назад в меню", f"cas_back_main:{owner}")
+            ("5", f"cas_bet:{owner}:5"),
+            ("10", f"cas_bet:{owner}:10"),
+            ("15", f"cas_bet:{owner}:15"),
+            ("20", f"cas_bet:{owner}:20"),
+            ("50", f"cas_bet:{owner}:50"),
+            ("⬅️ Назад", f"cas_back_main:{owner}")
         )
     )
     await c.answer()
@@ -500,7 +470,7 @@ async def on_casino_bet(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
     owner, bet = int(owner_str), int(bet_str)
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужая кнопка", show_alert=True)
 
     u = get_user(c.from_user)
     now = datetime.datetime.now()
@@ -508,20 +478,16 @@ async def on_casino_bet(c: types.CallbackQuery):
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
     
     if casino_count >= 10:
-        midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        time_left = midnight - now
-        hours, remainder = divmod(int(time_left.total_seconds()), 3600)
-        mins, secs = divmod(remainder, 60)
-        return await c.answer(f"🚫 Лимит казино исчерпан (10/10)! Сброс через: {hours} ч. {mins} мин.", show_alert=True)
+        return await c.answer("Лимит игр исчерпан (10/10)", show_alert=True)
 
     await edit(
         c,
-        f"🎰 Казино ПОРОГА (попытка {casino_count + 1}/10)\nСтавка: {bet} 🪙\n\nВыберите цвет:",
+        f"🎰 Казино ({casino_count + 1}/10)\nСтавка: {bet}\n\nВыберите цвет:",
         kb(
             ("🔴 Красное (x2)", f"cas_play:{owner}:{bet}:red"),
             ("⬛️ Черное (x2)", f"cas_play:{owner}:{bet}:black"),
-            ("🟢 Зеленое (Джекпот x8)", f"cas_play:{owner}:{bet}:green"),
-            ("⬅️ К выбору ставки", f"cas_menu:{owner}")
+            ("🟢 Зеленое (x8)", f"cas_play:{owner}:{bet}:green"),
+            ("⬅️ Назад", f"cas_menu:{owner}")
         )
     )
     await c.answer()
@@ -533,21 +499,21 @@ async def on_casino_play(c: types.CallbackQuery):
     _, owner_str, bet_str, color = c.data.split(":")
     owner, bet = int(owner_str), int(bet_str)
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужая кнопка", show_alert=True)
 
     u = get_user(c.from_user)
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
     if casino_count >= 10:
-        return await c.answer("Лимит исчерпан!", show_alert=True)
+        return await c.answer("Лимит исчерпан", show_alert=True)
 
     new_casino_count = casino_count + 1
     new_coins = u["coins"] - bet
     db.execute("UPDATE users SET coins=?, casino_count=?, last_casino_date=? WHERE id=?", (new_coins, new_casino_count, today_str, owner))
     db.commit()
 
-    await edit(c, f"🎰 Крутим рулетку... 🎲")
+    await edit(c, "🎰 Крутим рулетку...")
     try:
         await bot.send_dice(chat_id=c.message.chat.id, emoji="🎰")
     except Exception:
@@ -560,7 +526,7 @@ async def on_casino_play(c: types.CallbackQuery):
     elif roll < 0.95:
         w_color, emoji, name = "black", "⬛️", "Черное"
     else:
-        w_color, emoji, name = "green", "🟢", "Зеленое (Джекпот)"
+        w_color, emoji, name = "green", "🟢", "Зеленое"
 
     c_won_add = u["casino_won"]
     c_lost_add = u["casino_lost"]
@@ -577,11 +543,11 @@ async def on_casino_play(c: types.CallbackQuery):
 
         new_coins += total_winnings
         c_won_add += net_win_total
-        msg = f"🎰 {emoji} Выпало: {name}!\nВыигрыш: +{net_win_total} 🪙\nБаланс: {new_coins} 🪙"
+        msg = f"🎰 {emoji} Выпало: {name}\nВыигрыш: +{net_win_total}\nБаланс: {new_coins}"
     else:
         net_loss = bet
         c_lost_add += net_loss
-        msg = f"🎰 {emoji} Выпало: {name}\nПроигрыш: -{bet} 🪙\nБаланс: {new_coins} 🪙"
+        msg = f"🎰 {emoji} Выпало: {name}\nПроигрыш: -{bet}\nБаланс: {new_coins}"
 
     db.execute("UPDATE users SET coins=?, casino_won=?, casino_lost=? WHERE id=?", (new_coins, c_won_add, c_lost_add, owner))
     db.commit()
@@ -590,25 +556,25 @@ async def on_casino_play(c: types.CallbackQuery):
     await c.answer()
 
 
-# ---------- ДУЭЛИ (ФИКСИРОВАННЫЕ СТАВКИ 5, 10, 15, 20, 50 БЕЗ СПИСКОВ ВЫЗОВОВ) ----------
+# ---------- ДУЭЛИ ----------
 @dp.callback_query(F.data.startswith("duel_menu:"))
 async def on_duel_menu(c: types.CallbackQuery):
     add_activity(c.from_user.id)
     owner = int(c.data.split(":")[1])
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужое меню", show_alert=True)
     
     u = get_user(c.from_user)
     await edit(
         c,
-        f"⚔️ Дуэли ПОРОГ Коинов\n💰 Баланс: {u['coins']} 🪙\n\nВыбери ставку для дуэли (соперник найдется случайным образом):",
+        f"⚔️ Дуэль\n🪙 Баланс: {u['coins']}\n\nВыберите ставку:",
         kb(
-            ("5 🪙", f"duel_play:{owner}:5"),
-            ("10 🪙", f"duel_play:{owner}:10"),
-            ("15 🪙", f"duel_play:{owner}:15"),
-            ("20 🪙", f"duel_play:{owner}:20"),
-            ("50 🪙", f"duel_play:{owner}:50"),
-            ("⬅️ Назад в меню", f"cas_back_main:{owner}")
+            ("5", f"duel_play:{owner}:5"),
+            ("10", f"duel_play:{owner}:10"),
+            ("15", f"duel_play:{owner}:15"),
+            ("20", f"duel_play:{owner}:20"),
+            ("50", f"duel_play:{owner}:50"),
+            ("⬅️ Назад", f"cas_back_main:{owner}")
         )
     )
     await c.answer()
@@ -620,22 +586,21 @@ async def on_duel_play(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
     owner, bet = int(owner_str), int(bet_str)
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужая кнопка", show_alert=True)
 
     initiator = get_user(c.from_user)
     if initiator["coins"] < bet:
-        return await c.answer(f"Недостаточно коинов! У тебя {initiator['coins']} 🪙", show_alert=True)
+        return await c.answer("Недостаточно монет", show_alert=True)
 
-    # Ищем случайного оппонента в базе (кроме самого инициатора)
     opponents = db.execute("SELECT * FROM users WHERE id != ?", (owner,)).fetchall()
     if not opponents:
-        return await c.answer("Пока нет других участников для дуэли!", show_alert=True)
+        return await c.answer("Нет других участников", show_alert=True)
 
     opponent_row = random.choice(opponents)
     opponent = db.execute("SELECT * FROM users WHERE id=?", (opponent_row["id"],)).fetchone()
 
     if opponent["coins"] < bet:
-        return await c.answer(f"Случайный противник ({opponent['name']}) слишком беден для этой ставки! Попробуй еще раз.", show_alert=True)
+        return await c.answer("Противник беден, попробуйте еще раз", show_alert=True)
 
     winner, loser = random.choice([(initiator, opponent), (opponent, initiator)])
     now = datetime.datetime.now()
@@ -647,21 +612,21 @@ async def on_duel_play(c: types.CallbackQuery):
 
     if loser["shield_count"] > 0:
         db.execute("UPDATE users SET shield_count=shield_count-1 WHERE id=?", (loser["id"],))
-        shield_msg = f" (у {loser['name']} сработал щит 🛡)"
+        shield_msg = " (щит защитил)"
     else:
         db.execute("UPDATE users SET coins=coins-?, losses=losses+1 WHERE id=?", (loser_loss, loser["id"]))
-        shield_msg = f" (-{loser_loss} 🪙)"
+        shield_msg = f" (-{loser_loss})"
 
     db.execute("UPDATE users SET coins=coins+?, wins=wins+1 WHERE id=?", (winner_gain, winner["id"]))
     db.commit()
 
     await edit(
         c,
-        f"⚔️ Дуэль на {bet} 🪙 завершена!\n\n"
-        f"🥊 Бойцы: {initiator['name']} vs {opponent['name']}\n"
-        f"🎉 Победитель: {winner['name']} (+{winner_gain} 🪙)\n"
-        f"😢 Проигравший: {loser['name']}{shield_msg}",
-        kb(("🔄 Сыграть еще", f"duel_menu:{owner}"), ("⬅️ В меню", f"cas_back_main:{owner}"))
+        f"⚔️ Итог дуэли\n\n"
+        f"Бойцы: {initiator['name']} vs {opponent['name']}\n"
+        f"Победитель: {winner['name']} (+{winner_gain})\n"
+        f"Проигравший: {loser['name']}{shield_msg}",
+        kb(("🔄 Еще", f"duel_menu:{owner}"), ("⬅️ Меню", f"cas_back_main:{owner}"))
     )
     await c.answer()
 
@@ -673,12 +638,12 @@ async def on_cas_back_main(c: types.CallbackQuery):
     u = get_user(c.from_user)
     await edit(
         c,
-        f"🎲 Казино, Дуэли и Магазин ПОРОГ Коинов\n💰 Баланс: {u['coins']} 🪙\n\nВыберите раздел:",
+        f"🎲 Игровой зал\n🪙 Баланс: {u['coins']}\n\nВыберите раздел:",
         kb(
-            ("🎰 Казино (ставка 5, 10, 15, 20, 50)", f"cas_menu:{owner}"),
-            ("⚔️ Создать Дуэль (ставка 5, 10, 15, 20, 50)", f"duel_menu:{owner}"),
-            ("🎡 Получасовая Рулетка (Джекпот)", f"open_roulette:{owner}"),
-            ("🛒 Магазин призов ПОРОГА", f"shop_menu:{owner}")
+            ("🎰 Казино", f"cas_menu:{owner}"),
+            ("⚔️ Дуэль", f"duel_menu:{owner}"),
+            ("🎡 Рулетка", f"open_roulette:{owner}"),
+            ("🛒 Магазин", f"shop_menu:{owner}")
         )
     )
     await c.answer()
@@ -713,10 +678,10 @@ async def on_roulette_bet_inline(c: types.CallbackQuery):
     db.commit()
     text, markup = get_roulette_content()
     await edit(c, text, markup)
-    await c.answer(f"✅ Вложено {amount} 🪙 в рулетку!", show_alert=True)
+    await c.answer(f"Вложено: {amount}", show_alert=True)
 
 
-# ---------- МАГАЗИН (ДОБАВЛЕН В РАЗДЕЛ) ----------
+# ---------- МАГАЗИН ----------
 @dp.callback_query(F.data.startswith("shop_menu:"))
 async def on_shop_menu(c: types.CallbackQuery):
     add_activity(c.from_user.id)
@@ -725,20 +690,20 @@ async def on_shop_menu(c: types.CallbackQuery):
     coins = u["coins"]
     await edit(
         c,
-        f"🛒 Магазин призов ПОРОГА:\n\n"
-        f"🎬 Тема ролика — 5,000 🪙\n"
-        f"🎥 Упоминание в титрах — 2,500 🪙\n"
-        f"⭐ Telegram Premium — 1,600 🪙\n"
-        f"🛡 3 щита защиты — 150 🪙\n"
-        f"🎟 Буст x2 на 24ч — 50 🪙\n\n"
-        f"💰 Ваш баланс: {coins} 🪙",
+        f"🛒 Магазин призов\n\n"
+        f"🎬 Тема ролика — 5000\n"
+        f"🎥 Титры — 2500\n"
+        f"⭐ Telegram Premium — 1600\n"
+        f"🛡 3 щита — 150\n"
+        f"🎟 Буст x2 (24ч) — 50\n\n"
+        f"🪙 Баланс: {coins}",
         InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎬 Тема (5000 🪙)", callback_data=f"buy:{owner}:theme")],
-            [InlineKeyboardButton(text="🎥 Титры (2500 🪙)", callback_data=f"buy:{owner}:mention")],
-            [InlineKeyboardButton(text="⭐ TG Premium (1600 🪙)", callback_data=f"buy:{owner}:tgprem")],
-            [InlineKeyboardButton(text="🛡 3 щита (150 🪙)", callback_data=f"buy:{owner}:shield")],
-            [InlineKeyboardButton(text="🎟 Буст x2 (50 🪙)", callback_data=f"buy:{owner}:boost")],
-            [InlineKeyboardButton(text="⬅️ Назад в меню", callback_data=f"cas_back_main:{owner}")]
+            [InlineKeyboardButton(text="🎬 Тема (5000)", callback_data=f"buy:{owner}:theme")],
+            [InlineKeyboardButton(text="🎥 Титры (2500)", callback_data=f"buy:{owner}:mention")],
+            [InlineKeyboardButton(text="⭐ Премиум (1600)", callback_data=f"buy:{owner}:tgprem")],
+            [InlineKeyboardButton(text="🛡 Щиты (150)", callback_data=f"buy:{owner}:shield")],
+            [InlineKeyboardButton(text="🎟 Буст (50)", callback_data=f"buy:{owner}:boost")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cas_back_main:{owner}")]
         ])
     )
     await c.answer()
@@ -750,7 +715,7 @@ async def on_buy(c: types.CallbackQuery):
     _, owner, item = c.data.split(":")
     owner = int(owner)
     if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
+        return await c.answer("Чужая кнопка", show_alert=True)
 
     u = get_user(c.from_user)
     coins = u["coins"]
@@ -758,7 +723,7 @@ async def on_buy(c: types.CallbackQuery):
 
     price = prices.get(item, 0)
     if coins < price:
-        return await c.answer(f"Недостаточно коинов! Нужно {price} 🪙", show_alert=True)
+        return await c.answer("Недостаточно монет", show_alert=True)
 
     new_coins = coins - price
     user_link = f"<a href='tg://user?id={c.from_user.id}'>{c.from_user.first_name}</a>"
@@ -766,28 +731,28 @@ async def on_buy(c: types.CallbackQuery):
     db.commit()
 
     if item == "theme":
-        await edit(c, "🎉 Тема ролика куплена! Админу отправлено уведомление.")
-        await bot.send_message(ADMIN_ID, f"🚨 Купили тему ролика (5000 🪙):\n👤 {user_link}", parse_mode="HTML")
+        await edit(c, "🎉 Покупка успешна. Тема отправлена админу.")
+        await bot.send_message(ADMIN_ID, f"🚨 Куплена тема ролика (5000):\n👤 {user_link}", parse_Mode="HTML")
     elif item == "mention":
-        await edit(c, "🎉 Упоминание в титрах куплено! Напиши админу свой ник.")
-        await bot.send_message(ADMIN_ID, f"🚨 Купили упоминание (2500 🪙):\n👤 {user_link}", parse_mode="HTML")
+        await edit(c, "🎉 Покупка успешна. Напишите админу свой ник.")
+        await bot.send_message(ADMIN_ID, f"🚨 Куплены титры (2500):\n👤 {user_link}", parse_mode="HTML")
     elif item == "tgprem":
-        await edit(c, "🎉 Telegram Premium куплен! Админу отправлено уведомление.")
-        await bot.send_message(ADMIN_ID, f"🚨 Купили Telegram Premium (1600 🪙):\n👤 {user_link}", parse_mode="HTML")
+        await edit(c, "🎉 Покупка успешна. Ожидайте выдачи Telegram Premium.")
+        await bot.send_message(ADMIN_ID, f"🚨 Куплен Telegram Premium (1600):\n👤 {user_link}", parse_mode="HTML")
     elif item == "shield":
         db.execute("UPDATE users SET shield_count=shield_count+3 WHERE id=?", (owner,))
         db.commit()
-        await edit(c, "🛡 Успешно! Добавлено 3 защитных щита.")
+        await edit(c, "🛡 Добавлено 3 защитных щита.")
     elif item == "boost":
         expiry = (datetime.datetime.now() + datetime.timedelta(days=1)).isoformat()
         db.execute("UPDATE users SET boost_until=? WHERE id=?", (expiry, owner))
         db.commit()
-        await edit(c, "💥 Буст x2 активирован на 24 часа!")
+        await edit(c, "💥 Буст x2 активирован на 24 часа.")
 
     await c.answer()
 
 
-# ---------- ВЕБ-СЕРВЕР ДЛЯ RENDER ----------
+# ---------- ВЕБ-СЕРВЕР ----------
 async def handle(request):
     return web.Response(text="Bot is running!")
 

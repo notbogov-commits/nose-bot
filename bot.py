@@ -17,13 +17,13 @@ from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN", "9119538825:AAENZDrBothOJODdYIgOzPZRGfl-noFs1QU")
 DEFAULT_BET = 5  # Базовая ставка 5 коинов
-MAX_CASINO_BET = 50  # Максимальная ставка в казино и дуэлях
+MAX_CASINO_BET = 50  # Максимальная ставка в обычном казино
 ADMIN_ID = 1642626687  # Твой ID
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-# Инициализация базы данных и безопасное добавление новых колонок (миграция без потери данных)
+# Инициализация базы данных и безопасная миграция таблиц
 db = sqlite3.connect("game.db")
 db.row_factory = sqlite3.Row
 db.executescript(
@@ -33,9 +33,12 @@ db.executescript(
         name TEXT,
         coins INTEGER DEFAULT 10,
         last_bonus TEXT,
+        streak INTEGER DEFAULT 0,
         last_work TEXT,
         casino_count INTEGER DEFAULT 0,
         last_casino_date TEXT,
+        casino_won INTEGER DEFAULT 0,
+        casino_lost INTEGER DEFAULT 0,
         wins INTEGER DEFAULT 0,
         losses INTEGER DEFAULT 0,
         shield_count INTEGER DEFAULT 0,
@@ -45,17 +48,27 @@ db.executescript(
     CREATE TABLE IF NOT EXISTS invited_users (
         user_id INTEGER PRIMARY KEY
     );
+    CREATE TABLE IF NOT EXISTS roulette_bids (
+        user_id INTEGER PRIMARY KEY,
+        name TEXT,
+        amount INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS roulette_info (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    );
     """
 )
 db.commit()
 
-# Автоматически добавляем колонки для статистики казино, если их еще нет в старой базе
+# Автоматически добавляем колонки для стрика и казино на случай старой базы
 try:
+    db.execute("ALTER TABLE users ADD COLUMN streak INTEGER DEFAULT 0")
     db.execute("ALTER TABLE users ADD COLUMN casino_won INTEGER DEFAULT 0")
     db.execute("ALTER TABLE users ADD COLUMN casino_lost INTEGER DEFAULT 0")
     db.commit()
 except sqlite3.OperationalError:
-    pass  # Колонка уже существует
+    pass
 
 
 def get_user(user: types.User) -> sqlite3.Row:
@@ -63,7 +76,7 @@ def get_user(user: types.User) -> sqlite3.Row:
     existing = db.execute("SELECT * FROM users WHERE id=?", (user.id,)).fetchone()
     if not existing:
         db.execute(
-            "INSERT INTO users (id, name, coins) VALUES (?, ?, 10)",
+            "INSERT INTO users (id, name, coins, streak) VALUES (?, ?, 10, 0)",
             (user.id, user.first_name),
         )
         db.commit()
@@ -107,11 +120,13 @@ def stats_text(user: types.User) -> str:
     shield_str = f"\n🛡 Защитных щитов: {u['shield_count']}" if u["shield_count"] > 0 else ""
     c_won = u["casino_won"] if "casino_won" in u.keys() else 0
     c_lost = u["casino_lost"] if "casino_lost" in u.keys() else 0
+    streak = u["streak"] if "streak" in u.keys() else 0
     
     return (
         f"📊 <b>Статистика игрока: {u['name']}</b>\n\n"
         f"🪙 Баланс: <b>{u['coins']} 🪙</b>\n"
         f"🏆 Статус: {title}{shield_str}\n"
+        f"🔥 Стрик бонусов: <b>{streak}/10 дней</b>\n"
         f"⚔️ Дуэли: побед {u['wins']} | поражений {u['losses']}\n"
         f"🎰 Казино: выиграно <b>+{c_won} 🪙</b> | проиграно <b>-{c_lost} 🪙</b>\n\n"
         f"<i>💡 Все действия происходят внутри бота по кнопкам.</i>"
@@ -128,33 +143,85 @@ def top_text() -> str:
     return "🏆 <b>Топ-15 комментаторов канала:</b>\n\n" + "\n".join(lines)
 
 
+# ---------- ПРОВЕРКА И РОЗЫГРЫШ СУТОЧНОЙ РУЛЕТКИ ----------
+def check_and_run_roulette() -> str:
+    """Проверяет, прошли ли сутки. Если да — разыгрывает банк рулетки среди участников."""
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    row = db.execute("SELECT value FROM roulette_info WHERE key='last_date'").fetchone()
+    
+    if not row:
+        db.execute("INSERT OR REPLACE INTO roulette_info (key, value) VALUES ('last_date', ?)", (now_str,))
+        db.commit()
+        return ""
+    
+    last_date = row["value"]
+    if last_date != now_str:
+        # Прошли сутки, крутим рулетку!
+        bids = db.execute("SELECT * FROM roulette_bids").fetchall()
+        announcement = ""
+        if bids:
+            total_bank = sum(b["amount"] for b in bids)
+            # Честный выбор победителя по весу ставок
+            participants = []
+            for b in bids:
+                participants.extend([b] * b["amount"])
+            
+            winner = random.choice(participants)
+            
+            # Начисляем весь банк победителю
+            db.execute("UPDATE users SET coins = coins + ? WHERE id = ?", (total_bank, winner["user_id"]))
+            db.commit()
+            
+            announcement = f"🎡 <b>Итоги суточной рулетки!</b>\nБанк составил: <b>{total_bank} 🪙</b>\nПобедитель: <b>{winner['name']}</b> забирает весь банк! 🎉\n\n"
+        
+        # Сбрасываем ставки и обновляем дату
+        db.execute("DELETE FROM roulette_bids")
+        db.execute("UPDATE roulette_info SET value = ? WHERE key = 'last_date'", (now_str,))
+        db.commit()
+        return announcement
+    return ""
+
+
 def do_bonus(user: types.User) -> str:
-    """Логика выдачи ежедневного бонуса (раз в 24 часа). С учетом буста x2."""
+    """Логика выдачи ежедневного бонуса со стриком до 10 дней (10 -> 19 коинов)."""
+    check_and_run_roulette()
     u = get_user(user)
     now = datetime.datetime.now()
     
-    if u["last_bonus"]:
-        last_dt = datetime.datetime.fromisoformat(u["last_bonus"])
-        if now - last_dt < datetime.timedelta(days=1):
-            time_left = datetime.timedelta(days=1) - (now - last_dt)
+    streak = u["streak"] if "streak" in u.keys() else 0
+    last_bonus_str = u["last_bonus"]
+    
+    if last_bonus_str:
+        last_dt = datetime.datetime.fromisoformat(last_bonus_str)
+        diff = now - last_dt
+        if diff < datetime.timedelta(days=1):
+            time_left = datetime.timedelta(days=1) - diff
             hours, remainder = divmod(int(time_left.total_seconds()), 3600)
             mins, _ = divmod(remainder, 60)
-            return f"⏳ Бонус уже получен! Следующий будет доступен через {hours} ч. {mins} мин."
+            return f"⏳ Бонус уже получен! Следующий будет доступен через {hours} ч. {mins} мин.\n🔥 Текущий стрик: <b>{streak}/10 дней</b>."
+        elif diff > datetime.timedelta(days=2):
+            # Если прошло больше 2 дней — стрик сгорает
+            streak = 0
 
-    delta = 10
+    # Считаем награду: 1-й день = 10, 2-й = 11 ... 10-й день = 19 (максимум)
+    streak = min(streak + 1, 10)
+    base_delta = 9 + streak  # При стрик=1 -> 10, стрик=10 -> 19
+    
+    delta = base_delta
     if u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now:
         delta *= 2
 
     new_coins = u["coins"] + delta
-    db.execute("UPDATE users SET coins=?, last_bonus=? WHERE id=?", (new_coins, now.isoformat(), user.id))
+    db.execute("UPDATE users SET coins=?, last_bonus=?, streak=? WHERE id=?", (new_coins, now.isoformat(), streak, user.id))
     db.commit()
     
-    boost_note = " (💥 Активен буст x2!)" if delta > 10 else ""
-    return f"🎁 <b>Бонус забран!</b> Начислено <b>+{delta} 🪙</b>{boost_note}\n🪙 Баланс: <b>{new_coins} 🪙</b>"
+    boost_note = " (💥 Активен буст x2!)" if delta > base_delta else ""
+    return f"🎁 <b>Бонус забран (День {streak}/10)!</b> Начислено <b>+{delta} 🪙</b>{boost_note}\n🔥 Стрик увеличен!\n🪙 Баланс: <b>{new_coins} 🪙</b>"
 
 
 def do_work(user: types.User) -> str:
-    """Логика вброса тейка в комментарии (раз в 1 час, шанс 50/50). С учетом буста x2."""
+    """Логика вброса тейка в комментарии (раз в час, шанс 50/50). С учетом буста x2."""
+    check_and_run_roulette()
     u = get_user(user)
     now = datetime.datetime.now()
     if u["last_work"]:
@@ -259,6 +326,9 @@ async def handle_all_messages(message: types.Message):
 # ---------- ИНЛАЙН-МЕНЮ БОТА ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
+    # Проверяем суточную рулетку при каждом открытии меню
+    roulette_notice = check_and_run_roulette()
+    
     uid = q.from_user.id
     u = get_user(q.from_user)
     coins = u["coins"]
@@ -267,19 +337,31 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
     bet = min(bet, MAX_CASINO_BET)
 
+    # Собираем данные для суточной рулетки
+    bids = db.execute("SELECT * FROM roulette_bids").fetchall()
+    total_bank = sum(b["amount"] for b in bids)
+    
+    roulette_lines = []
+    if bids:
+        for b in bids:
+            chance = (b["amount"] / total_bank) * 100
+            roulette_lines.append(f"• <b>{b['name']}</b> — вложил <b>{b['amount']} 🪙</b> (шанс: <b>{chance:.1f}%</b>)")
+    else:
+        roulette_lines.append("<i>Пока никто не сделал ставку. Стань первым!</i>")
+
     results = [
         article(
             "info",
             "📌 Правила и информация о боте",
-            "Как играть, зарабатывать коины и обменивать их на призы",
+            "Как играть, зарабатывать коины, стрик, рулетка и призы",
             (
                 "📌 <b>Добро пожаловать в игровую экономику ПОРОГА!</b>\n\n"
-                "🤖 <b>Что это за бот?</b> Официальная валюта канала, где ты можешь копить коины и обменивать их на реальные призы.\n\n"
-                "💡 <b>Как зарабатывать:</b>\n"
-                "• 🎁 Забирай <b>Ежедневный бонус</b> (+10 🪙 раз в сутки).\n"
-                "• 💬 Вбрасывай <b>Тейки</b> (раз в час, шанс 50/50).\n"
-                "• 🎰 Крути <b>Казино</b> (до 10 раз в сутки).\n"
-                "• ⚔️ Сражайся в <b>Дуэлях</b>.\n\n"
+                "🤖 <b>Правила и возможности:</b>\n"
+                "• 🎁 <b>Ежедневный стрик:</b> Забирай бонус каждые сутки. Награда растет от 10 до 19 коинов за 10 дней подряд!\n"
+                "• 💬 <b>Вброс тейков:</b> Раз в час кидай мнение (шанс 50/50 на ±3 коина).\n"
+                "• 🎰 <b>Казино:</b> До 10 раз в сутки (Красное/Черное x2, Зеленое x8).\n"
+                "• 🎡 <b>Суточная рулетка:</b> Вкладывай сколько угодно монет в общий банк. Раз в сутки случайный игрок забирает весь банк пропорционально своим шансам!\n"
+                "• ⚔️ <b>Дуэли:</b> Сражайся с другими игроками на коины.\n\n"
                 f"💰 Твой текущий баланс: <b>{coins} 🪙</b>"
             ),
         ),
@@ -290,15 +372,10 @@ async def inline_query_menu(q: types.InlineQuery):
             (
                 "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
                 "1️⃣ 🎬 <b>Тема ролика — 5,000 🪙</b>\n"
-                "<i>(Выбор темы для следующего видео на канале)</i>\n\n"
                 "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
-                "<i>(Твой ник попадёт в титры следующего ролика)</i>\n\n"
                 "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
-                "<i>(Месяц подписки за активность в боте)</i>\n\n"
                 "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
-                "<i>(Защита от потери коинов в проигранных дуэлях)</i>\n\n"
-                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
-                "<i>(Удваивает бонус, тейки и все выигрыши на целый день)</i>\n\n"
+                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b> <i>(удваивает бонус, тейки и выигрыши в казино!)</i>\n\n"
                 f"💰 Ваш баланс: <b>{coins} 🪙</b>"
             ),
             InlineKeyboardMarkup(inline_keyboard=[
@@ -308,6 +385,25 @@ async def inline_query_menu(q: types.InlineQuery):
                 [InlineKeyboardButton(text="🛡 3 щита (150 🪙)", callback_data=f"buy:{uid}:shield")],
                 [InlineKeyboardButton(text="🎟 Буст x2 (50 🪙)", callback_data=f"buy:{uid}:boost")],
             ])
+        ),
+        article(
+            "roulette",
+            "🎡 Суточная Рулетка (Джекпот)",
+            f"Банк рулетки: {total_bank} 🪙 • Вложи коины и забирай всё через сутки!",
+            (
+                f"{roulette_notice}"
+                f"🎡 <b>Суточная Рулетка ПОРОГА</b>\n\n"
+                f"💰 Общий банк: <b>{total_bank} 🪙</b>\n"
+                f"<i>Розыгрыш происходит автоматически раз в сутки. Больше вложил — выше шанс победить!</i>\n\n"
+                f"<b>Список участников:</b>\n" + "\n".join(roulette_lines) + f"\n\n"
+                f"<b>Сделай ставку в банк:</b>"
+            ),
+            kb(
+                ("➕ Вложить 10 🪙", f"roulette_bet:{uid}:10"),
+                ("➕ Вложить 50 🪙", f"roulette_bet:{uid}:50"),
+                ("➕ Вложить 100 🪙", f"roulette_bet:{uid}:100"),
+                ("➕ Вложить 500 🪙", f"roulette_bet:{uid}:500"),
+            )
         ),
         article(
             "casino",
@@ -347,10 +443,14 @@ async def inline_query_menu(q: types.InlineQuery):
         ),
         article(
             "bonus",
-            "🎁 Ежедневный бонус",
-            "Забирай стабильно +10 коинов каждый день",
-            "🎁 <b>Ежедневный бонус</b>\n\nБесплатное пополнение баланса (+10 коинов, с бустом x2 — +20 коинов!).",
-            kb(("Забрать бонус 🎁 (+10 🪙)", f"bonus:{uid}")),
+            "🎁 Ежедневный бонус (Стрик)",
+            "Забирай бонус каждый день, расти стрик от 10 до 19 коинов!",
+            (
+                f"🎁 <b>Ежедневный бонус и Стрик</b>\n\n"
+                f"Текущий стрик: <b>{u['streak']}/10 дней</b>\n"
+                f"<i>Забирай бонус каждый день без пропусков, чтобы увеличивать награду! (С бустом x2 хенерится х2).</i>"
+            ),
+            kb(("Забрать бонус 🎁", f"bonus:{uid}")),
         ),
         article(
             "work",
@@ -362,7 +462,7 @@ async def inline_query_menu(q: types.InlineQuery):
         article(
             "stats",
             "📊 Моя статистика",
-            "Твой текущий баланс, титул, щиты и победы в дуэлях",
+            "Твой баланс, стрик, казино и победы в дуэлях",
             stats_text(q.from_user),
         ),
         article(
@@ -396,6 +496,36 @@ async def on_work(c: types.CallbackQuery):
     res_text = do_work(c.from_user)
     await edit(c, res_text)
     await c.answer()
+
+
+# ---------- ЛОГИКА СУТОЧНОЙ РУЛЕТКИ ----------
+@dp.callback_query(F.data.startswith("roulette_bet:"))
+async def on_roulette_bet(c: types.CallbackQuery):
+    check_and_run_roulette()
+    _, owner_str, amount_str = c.data.split(":")
+    owner, amount = int(owner_str), int(amount_str)
+    
+    if c.from_user.id != owner:
+        return await c.answer("Не твоя кнопка", show_alert=True)
+
+    u = get_user(c.from_user)
+    if u["coins"] < amount:
+        return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
+
+    # Списываем монеты
+    new_coins = u["coins"] - amount
+    db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+    
+    # Добавляем или обновляем ставку в рулетке
+    existing_bid = db.execute("SELECT amount FROM roulette_bids WHERE user_id=?", (owner,)).fetchone()
+    if existing_bid:
+        new_amount = existing_bid["amount"] + amount
+        db.execute("UPDATE roulette_bids SET amount=? WHERE user_id=?", (new_amount, owner))
+    else:
+        db.execute("INSERT INTO roulette_bids (user_id, name, amount) VALUES (?, ?, ?)", (owner, u["name"], amount))
+    
+    db.commit()
+    await c.answer(f"✅ Успешно вложено {amount} 🪙 в банк рулетки!", show_alert=True)
 
 
 # ---------- ЛОГИКА КАЗИНО (до 10 раз в сутки + буст x2) ----------

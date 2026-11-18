@@ -143,47 +143,91 @@ def top_text() -> str:
     return "🏆 <b>Топ-15 комментаторов канала:</b>\n\n" + "\n".join(lines)
 
 
-# ---------- ПРОВЕРКА И РОЗЫГРЫШ СУТОЧНОЙ РУЛЕТКИ ----------
+# ---------- ПРОВЕРКА И РОЗЫГРЫШ ПОЛУЧАСОВОЙ РУЛЕТКИ ----------
 def check_and_run_roulette() -> str:
-    """Проверяет, прошли ли сутки. Если да — разыгрывает банк рулетки среди участников."""
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    row = db.execute("SELECT value FROM roulette_info WHERE key='last_date'").fetchone()
+    """Проверяет, прошли ли 30 минут. Если да — разыгрывает банк рулетки среди участников."""
+    now = datetime.datetime.now()
+    row = db.execute("SELECT value FROM roulette_info WHERE key='next_spin'").fetchone()
     
     if not row:
-        db.execute("INSERT OR REPLACE INTO roulette_info (key, value) VALUES ('last_date', ?)", (now_str,))
+        # Устанавливаем первое время прокрутки через 30 минут от текущего момента
+        next_spin = (now + datetime.timedelta(minutes=30)).isoformat()
+        db.execute("INSERT OR REPLACE INTO roulette_info (key, value) VALUES ('next_spin', ?)", (next_spin,))
         db.commit()
         return ""
     
-    last_date = row["value"]
-    if last_date != now_str:
-        # Прошли сутки, крутим рулетку!
+    next_spin_dt = datetime.datetime.fromisoformat(row["value"])
+    if now >= next_spin_dt:
         bids = db.execute("SELECT * FROM roulette_bids").fetchall()
         announcement = ""
         if bids:
             total_bank = sum(b["amount"] for b in bids)
-            # Честный выбор победителя по весу ставок
             participants = []
             for b in bids:
                 participants.extend([b] * b["amount"])
             
             winner = random.choice(participants)
             
-            # Начисляем весь банк победителю
             db.execute("UPDATE users SET coins = coins + ? WHERE id = ?", (total_bank, winner["user_id"]))
             db.commit()
             
-            announcement = f"🎡 <b>Итоги суточной рулетки!</b>\nБанк составил: <b>{total_bank} 🪙</b>\nПобедитель: <b>{winner['name']}</b> забирает весь банк! 🎉\n\n"
+            announcement = f"🎡 <b>Итоги получасовой рулетки!</b>\nБанк составил: <b>{total_bank} 🪙</b>\nПобедитель: <b>{winner['name']}</b> забирает весь банк! 🎉\n\n"
         
-        # Сбрасываем ставки и обновляем дату
+        # Сбрасываем ставки и сдвигаем таймер ровно на 30 минут вперед
         db.execute("DELETE FROM roulette_bids")
-        db.execute("UPDATE roulette_info SET value = ? WHERE key = 'last_date'", (now_str,))
+        new_next_spin = (now + datetime.timedelta(minutes=30)).isoformat()
+        db.execute("UPDATE roulette_info SET value = ? WHERE key = 'next_spin'", (new_next_spin,))
         db.commit()
         return announcement
     return ""
 
 
+def get_roulette_content() -> tuple[str, InlineKeyboardMarkup]:
+    """Генерирует актуальный текст, таймер и клавиатуру для получасовой рулетки."""
+    check_and_run_roulette()
+    
+    now = datetime.datetime.now()
+    row = db.execute("SELECT value FROM roulette_info WHERE key='next_spin'").fetchone()
+    if row:
+        next_spin_dt = datetime.datetime.fromisoformat(row["value"])
+        time_left = next_spin_dt - now
+        if time_left.total_seconds() < 0:
+            time_left = datetime.timedelta(0)
+        mins, secs = divmod(int(time_left.total_seconds()), 60)
+        timer_str = f"{mins:02d} мин. {secs:02d} сек."
+    else:
+        timer_str = "30 мин. 00 сек."
+
+    bids = db.execute("SELECT * FROM roulette_bids").fetchall()
+    total_bank = sum(b["amount"] for b in bids)
+    
+    roulette_lines = []
+    if bids:
+        for b in bids:
+            chance = (b["amount"] / total_bank) * 100
+            roulette_lines.append(f"• <b>{b['name']}</b> — вложил <b>{b['amount']} 🪙</b> (шанс на куш: <b>{chance:.1f}%</b>)")
+    else:
+        roulette_lines.append("<i>Пока никто не сделал ставку. Стань первым!</i>")
+
+    text = (
+        f"🎡 <b>Получасовая Рулетка ПОРОГА</b>\n\n"
+        f"⏱ <b>До новой крутки осталось:</b> <code>{timer_str}</code>\n"
+        f"💰 Общий банк: <b>{total_bank} 🪙</b>\n"
+        f"<i>Розыгрыш происходит автоматически каждые 30 минут. Больше вложил — выше шанс на куш!</i>\n\n"
+        f"<b>Список участников:</b>\n" + "\n".join(roulette_lines) + f"\n\n"
+        f"<b>Сделай ставку в банк:</b>"
+    )
+    markup = kb(
+        ("➕ Вложить 10 🪙", "r_bet:10"),
+        ("➕ Вложить 50 🪙", "r_bet:50"),
+        ("➕ Вложить 100 🪙", "r_bet:100"),
+        ("➕ Вложить 500 🪙", "r_bet:500"),
+    )
+    return text, markup
+
+
 def do_bonus(user: types.User) -> str:
-    """Логика выдачи ежедневного бонуса со стриком до 10 дней (10 -> 19 коинов)."""
+    """Логика выдачи ежедневного бонуса со стриком до 10 дней с точным таймером."""
     check_and_run_roulette()
     u = get_user(user)
     now = datetime.datetime.now()
@@ -197,15 +241,13 @@ def do_bonus(user: types.User) -> str:
         if diff < datetime.timedelta(days=1):
             time_left = datetime.timedelta(days=1) - diff
             hours, remainder = divmod(int(time_left.total_seconds()), 3600)
-            mins, _ = divmod(remainder, 60)
-            return f"⏳ Бонус уже получен! Следующий будет доступен через {hours} ч. {mins} мин.\n🔥 Текущий стрик: <b>{streak}/10 дней</b>."
+            mins, secs = divmod(remainder, 60)
+            return f"⏳ Бонус уже получен! До следующей попытки осталось: <b>{hours} ч. {mins} мин. {secs} сек.</b>\n🔥 Текущий стрик: <b>{streak}/10 дней</b>."
         elif diff > datetime.timedelta(days=2):
-            # Если прошло больше 2 дней — стрик сгорает
             streak = 0
 
-    # Считаем награду: 1-й день = 10, 2-й = 11 ... 10-й день = 19 (максимум)
     streak = min(streak + 1, 10)
-    base_delta = 9 + streak  # При стрик=1 -> 10, стрик=10 -> 19
+    base_delta = 9 + streak
     
     delta = base_delta
     if u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now:
@@ -220,16 +262,20 @@ def do_bonus(user: types.User) -> str:
 
 
 def do_work(user: types.User) -> str:
-    """Логика вброса тейка в комментарии (раз в час, шанс 50/50). С учетом буста x2."""
+    """Логика вброса тейка (раз в час, шанс 50/50) с проверкой нулевого баланса и таймером."""
     check_and_run_roulette()
     u = get_user(user)
+    
+    if u["coins"] <= 0:
+        return f"🚫 <b>Недостаточно средств!</b> У тебя 0 или меньше коинов. Сначала заработай монеты через бонус или рулетку, чтобы вбросить тейк."
+
     now = datetime.datetime.now()
     if u["last_work"]:
         last_dt = datetime.datetime.fromisoformat(u["last_work"])
         if now - last_dt < datetime.timedelta(hours=1):
             time_left = datetime.timedelta(hours=1) - (now - last_dt)
             mins, secs = divmod(int(time_left.total_seconds()), 60)
-            return f"⏳ Следующий вброс тейка доступен через {mins} мин. {secs} сек."
+            return f"⏳ Лимит вбросов исчерпан! До следующей попытки осталось: <b>{mins} мин. {secs} сек.</b>"
 
     gain = 3
     loss = 3
@@ -305,7 +351,6 @@ async def handle_all_messages(message: types.Message):
         await message.reply(welcome_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
-    # Зазывание нового пользователя в игру строго 1 раз в тредах канала
     if message.message_thread_id:
         user_id = message.from_user.id
         first_name = message.from_user.first_name
@@ -326,7 +371,6 @@ async def handle_all_messages(message: types.Message):
 # ---------- ИНЛАЙН-МЕНЮ БОТА ----------
 @dp.inline_query()
 async def inline_query_menu(q: types.InlineQuery):
-    # Проверяем суточную рулетку при каждом открытии меню
     roulette_notice = check_and_run_roulette()
     
     uid = q.from_user.id
@@ -337,17 +381,9 @@ async def inline_query_menu(q: types.InlineQuery):
     bet = int(text) if text.isdigit() and int(text) > 0 else DEFAULT_BET
     bet = min(bet, MAX_CASINO_BET)
 
-    # Собираем данные для суточной рулетки
-    bids = db.execute("SELECT * FROM roulette_bids").fetchall()
-    total_bank = sum(b["amount"] for b in bids)
-    
-    roulette_lines = []
-    if bids:
-        for b in bids:
-            chance = (b["amount"] / total_bank) * 100
-            roulette_lines.append(f"• <b>{b['name']}</b> — вложил <b>{b['amount']} 🪙</b> (шанс: <b>{chance:.1f}%</b>)")
-    else:
-        roulette_lines.append("<i>Пока никто не сделал ставку. Стань первым!</i>")
+    r_text, r_markup = get_roulette_content()
+    if roulette_notice:
+        r_text = roulette_notice + r_text
 
     results = [
         article(
@@ -358,9 +394,9 @@ async def inline_query_menu(q: types.InlineQuery):
                 "📌 <b>Добро пожаловать в игровую экономику ПОРОГА!</b>\n\n"
                 "🤖 <b>Правила и возможности:</b>\n"
                 "• 🎁 <b>Ежедневный стрик:</b> Забирай бонус каждые сутки. Награда растет от 10 до 19 коинов за 10 дней подряд!\n"
-                "• 💬 <b>Вброс тейков:</b> Раз в час кидай мнение (шанс 50/50 на ±3 коина).\n"
+                "• 💬 <b>Вброс тейков:</b> Раз в час кидай мнение (шанс 50/50 на ±3 коина). Нужен баланс больше 0!\n"
                 "• 🎰 <b>Казино:</b> До 10 раз в сутки (Красное/Черное x2, Зеленое x8).\n"
-                "• 🎡 <b>Суточная рулетка:</b> Вкладывай сколько угодно монет в общий банк. Раз в сутки случайный игрок забирает весь банк пропорционально своим шансам!\n"
+                "• 🎡 <b>Получасовая рулетка:</b> Вкладывай сколько угодно монет в банк. Розыгрыш каждые 30 минут, шанс на куш зависит от твоей доли!\n"
                 "• ⚔️ <b>Дуэли:</b> Сражайся с другими игроками на коины.\n\n"
                 f"💰 Твой текущий баланс: <b>{coins} 🪙</b>"
             ),
@@ -372,10 +408,15 @@ async def inline_query_menu(q: types.InlineQuery):
             (
                 "🛒 <b>Магазин призов ПОРОГА:</b>\n\n"
                 "1️⃣ 🎬 <b>Тема ролика — 5,000 🪙</b>\n"
+                "   <i>(Обсуждаем тему ролика под ваши желания, и я снимаю на нее!)</i>\n\n"
                 "2️⃣ 🎥 <b>Упоминание в титрах — 2,500 🪙</b>\n"
+                "   <i>(Ваш ник попадет в титры / вставку с благодарностью в следующем ролике)</i>\n\n"
                 "3️⃣ ⭐ <b>Telegram Premium — 1,600 🪙</b>\n"
+                "   <i>(Месяц подписки за активность в боте)</i>\n\n"
                 "4️⃣ 🛡 <b>3 щита защиты — 150 🪙</b>\n"
-                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b> <i>(удваивает бонус, тейки и выигрыши в казино!)</i>\n\n"
+                "   <i>(Защитные щиты для безопасных дуэлей)</i>\n\n"
+                "5️⃣ 🎟 <b>Буст x2 на 24ч — 50 🪙</b>\n"
+                "   <i>(Удваивает бонус, тейки и выигрыши в казино на целый день!)</i>\n\n"
                 f"💰 Ваш баланс: <b>{coins} 🪙</b>"
             ),
             InlineKeyboardMarkup(inline_keyboard=[
@@ -388,22 +429,10 @@ async def inline_query_menu(q: types.InlineQuery):
         ),
         article(
             "roulette",
-            "🎡 Суточная Рулетка (Джекпот)",
-            f"Банк рулетки: {total_bank} 🪙 • Вложи коины и забирай всё через сутки!",
-            (
-                f"{roulette_notice}"
-                f"🎡 <b>Суточная Рулетка ПОРОГА</b>\n\n"
-                f"💰 Общий банк: <b>{total_bank} 🪙</b>\n"
-                f"<i>Розыгрыш происходит автоматически раз в сутки. Больше вложил — выше шанс победить!</i>\n\n"
-                f"<b>Список участников:</b>\n" + "\n".join(roulette_lines) + f"\n\n"
-                f"<b>Сделай ставку в банк:</b>"
-            ),
-            kb(
-                ("➕ Вложить 10 🪙", f"roulette_bet:{uid}:10"),
-                ("➕ Вложить 50 🪙", f"roulette_bet:{uid}:50"),
-                ("➕ Вложить 100 🪙", f"roulette_bet:{uid}:100"),
-                ("➕ Вложить 500 🪙", f"roulette_bet:{uid}:500"),
-            )
+            "🎡 Получасовая Рулетка",
+            "Вложи коины, следи за таймером, шансом на куш и забирай банк каждые 30 минут!",
+            r_text,
+            r_markup
         ),
         article(
             "casino",
@@ -448,7 +477,7 @@ async def inline_query_menu(q: types.InlineQuery):
             (
                 f"🎁 <b>Ежедневный бонус и Стрик</b>\n\n"
                 f"Текущий стрик: <b>{u['streak']}/10 дней</b>\n"
-                f"<i>Забирай бонус каждый день без пропусков, чтобы увеличивать награду! (С бустом x2 хенерится х2).</i>"
+                f"<i>Забирай бонус каждый день без пропусков, чтобы увеличивать награду! (С бустом x2 генерится x2).</i>"
             ),
             kb(("Забрать бонус 🎁", f"bonus:{uid}")),
         ),
@@ -456,7 +485,11 @@ async def inline_query_menu(q: types.InlineQuery):
             "work",
             "💬 Вбросить тейк в комменты",
             "Шанс 50/50 (+3 / -3 коина • раз в час)",
-            "💬 <b>Вбросить тейк</b>\n\nШанс 50 на 50: либо +3 коина, либо -3 коина (с бустом x2 — ±6 коинов!).",
+            (
+                f"💬 <b>Вбросить тейк</b>\n\n"
+                f"Шанс 50 на 50: либо +3 коина, либо -3 коина (с бустом x2 — ±6 коинов!).\n"
+                f"<i>⚠️ Требуется положительный баланс (больше 0 🪙).</i>"
+            ),
             kb(("Вбросить тейк 💬", f"work:{uid}")),
         ),
         article(
@@ -482,8 +515,6 @@ async def edit(c: types.CallbackQuery, text: str, markup=None):
 
 @dp.callback_query(F.data.startswith("bonus:"))
 async def on_bonus(c: types.CallbackQuery):
-    if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("Не твоя кнопка", show_alert=True)
     res_text = do_bonus(c.from_user)
     await edit(c, res_text)
     await c.answer()
@@ -491,44 +522,40 @@ async def on_bonus(c: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("work:"))
 async def on_work(c: types.CallbackQuery):
-    if c.from_user.id != int(c.data.split(":")[1]):
-        return await c.answer("Не твоя кнопка", show_alert=True)
     res_text = do_work(c.from_user)
     await edit(c, res_text)
     await c.answer()
 
 
-# ---------- ЛОГИКА СУТОЧНОЙ РУЛЕТКИ ----------
-@dp.callback_query(F.data.startswith("roulette_bet:"))
-async def on_roulette_bet(c: types.CallbackQuery):
+# ---------- ЛОГИКА ПОЛУЧАСОВОЙ РУЛЕТКИ С ТАЙМЕРОМ ----------
+@dp.callback_query(F.data.startswith("r_bet:"))
+async def on_roulette_bet_inline(c: types.CallbackQuery):
     check_and_run_roulette()
-    _, owner_str, amount_str = c.data.split(":")
-    owner, amount = int(owner_str), int(amount_str)
+    _, amount_str = c.data.split(":")
+    amount = int(amount_str)
     
-    if c.from_user.id != owner:
-        return await c.answer("Не твоя кнопка", show_alert=True)
-
     u = get_user(c.from_user)
     if u["coins"] < amount:
         return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
 
-    # Списываем монеты
     new_coins = u["coins"] - amount
-    db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, owner))
+    db.execute("UPDATE users SET coins=? WHERE id=?", (new_coins, c.from_user.id))
     
-    # Добавляем или обновляем ставку в рулетке
-    existing_bid = db.execute("SELECT amount FROM roulette_bids WHERE user_id=?", (owner,)).fetchone()
+    existing_bid = db.execute("SELECT amount FROM roulette_bids WHERE user_id=?", (c.from_user.id,)).fetchone()
     if existing_bid:
         new_amount = existing_bid["amount"] + amount
-        db.execute("UPDATE roulette_bids SET amount=? WHERE user_id=?", (new_amount, owner))
+        db.execute("UPDATE roulette_bids SET amount=? WHERE user_id=?", (new_amount, c.from_user.id))
     else:
-        db.execute("INSERT INTO roulette_bids (user_id, name, amount) VALUES (?, ?, ?)", (owner, u["name"], amount))
+        db.execute("INSERT INTO roulette_bids (user_id, name, amount) VALUES (?, ?, ?)", (c.from_user.id, u["name"], amount))
     
     db.commit()
+    
+    text, markup = get_roulette_content()
+    await edit(c, text, markup)
     await c.answer(f"✅ Успешно вложено {amount} 🪙 в банк рулетки!", show_alert=True)
 
 
-# ---------- ЛОГИКА КАЗИНО (до 10 раз в сутки + буст x2) ----------
+# ---------- ЛОГИКА КАЗИНО С ПОКАЗОМ ТОЧНОГО ВРЕМЕНИ ДО СБРОСА ЛИМИТА (10 игр в сутки) ----------
 @dp.callback_query(F.data.startswith("cas_bet:"))
 async def on_casino_bet_chosen(c: types.CallbackQuery):
     _, owner_str, bet_str = c.data.split(":")
@@ -542,7 +569,12 @@ async def on_casino_bet_chosen(c: types.CallbackQuery):
     casino_count = u["casino_count"] if u["last_casino_date"] == today_str else 0
     
     if casino_count >= 10:
-        return await c.answer("🚫 Лимит исчерпан! (10 игр в сутки).", show_alert=True)
+        midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        time_left = midnight - now
+        hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+        mins, secs = divmod(remainder, 60)
+        return await c.answer(f"🚫 Лимит исчерпан (10/10)! Сброс лимита через: {hours} ч. {mins} мин. {secs} сек.", show_alert=True)
+
     if u["coins"] < bet:
         return await c.answer(f"Недостаточно коинов! У тебя {u['coins']} 🪙", show_alert=True)
 
@@ -621,7 +653,6 @@ async def on_casino_play(c: types.CallbackQuery):
         mult = 8 if color == "green" else 2
         winnings = bet * mult
 
-        # Проверяем активен ли буст x2, если да — удваиваем выигрыш еще раз!
         boost_active = u["boost_until"] and datetime.datetime.fromisoformat(u["boost_until"]) > now
         if boost_active:
             winnings *= 2

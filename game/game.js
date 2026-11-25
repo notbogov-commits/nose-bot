@@ -2,17 +2,18 @@
 (function () {
 'use strict';
 var TITLES = window.TITLES, L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
-var SAVE_KEY = 'youtubers_save_v4', SET_KEY = 'youtubers_settings';
+var SLOT_KEY = 'youtubers_slot_', META_KEY = 'youtubers_meta', SET_KEY = 'youtubers_settings', SLOTS = 3;
+var DEV_HASH = '36b07348d7b7e38b41a3fb2e9e9dfd0a87b18f2682a981c03440f6ba30ab0e21'; // SHA-256 пароля разработчика
 var STAGES = ['rec', 'edit', 'up'];
 var STAFF_OF = { rec: 'op', edit: 'ed', up: 'mg' };
 var TABS = ['gear', 'team', 'home', 'channel', 'comments'];
 var $ = function (id) { return document.getElementById(id); };
 
 /* ---------- Настройки, тексты, форматирование ---------- */
-var settings = { lang: 'ru', sfx: true, music: true };
+var settings = { lang: 'ru', sfx: true, music: true, sfxVol: 80, musicVol: 50, dev: false };
 try { var st = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); for (var k in st) settings[k] = st[k]; } catch (e) {}
 function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {} }
-A.setSfx(settings.sfx); A.setMusic(settings.music);
+A.setSfx(settings.sfx); A.setMusic(settings.music); A.setSfxVolume(settings.sfxVol / 100); A.setMusicVolume(settings.musicVol / 100);
 
 function T() { return TX[settings.lang]; }
 function t(key, vars) {
@@ -40,17 +41,15 @@ function hhmm(h, m) { return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2); }
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function signed(x) { x = Math.round(x * 10) / 10; return (x > 0 ? '+' : x < 0 ? '−' : '±') + dec(Math.abs(x)); }
 
-/* ---------- Состояние ---------- */
-var S;
-function load() {
-  var hot = window.claude && window.claude.hot && window.claude.hot.data;
-  if (hot && hot.state) return L.restore(hot.state);
-  try { var raw = localStorage.getItem(SAVE_KEY); if (raw) return L.restore(JSON.parse(raw)); } catch (e) {}
-  return L.newState();
-}
-function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
-S = load();
-if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(function () { return { state: S }; });
+/* ---------- Состояние и слоты сохранений ---------- */
+var S = L.newState(), slot = 0;   // slot = 0 — игра не запущена (открыто главное меню)
+function readSlot(n) { try { var raw = localStorage.getItem(SLOT_KEY + n); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
+function writeSlot(n, data) { try { localStorage.setItem(SLOT_KEY + n, JSON.stringify(data)); return true; } catch (e) { return false; } }
+function meta() { try { return JSON.parse(localStorage.getItem(META_KEY) || '{}'); } catch (e) { return {}; } }
+function setMeta(m) { try { localStorage.setItem(META_KEY, JSON.stringify(m)); } catch (e) {} }
+function save() { if (!slot) return; S.savedAt = Date.now(); writeSlot(slot, S); var m = meta(); m.last = slot; setMeta(m); }
+var hotData = window.claude && window.claude.hot && window.claude.hot.data;
+if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(function () { return { state: S, slot: slot }; });
 
 var feedLines = [], lastClick = { rec: -9, edit: -9, up: -9 }, now = 0, shopTab = 'gear', lastPublish = -9, evShownAt = 0, movingUntil = 0;
 
@@ -100,8 +99,6 @@ function applyTexts() {
 function renderToggles() {
   $('sfxBtn').innerHTML = settings.sfx ? ICON.sfxOn : ICON.sfxOff; $('sfxBtn').setAttribute('aria-pressed', settings.sfx);
   $('musicBtn').innerHTML = settings.music ? ICON.musicOn : ICON.musicOff; $('musicBtn').setAttribute('aria-pressed', settings.music);
-  $('mSfxOn').setAttribute('aria-pressed', settings.sfx); $('mSfxOff').setAttribute('aria-pressed', !settings.sfx);
-  $('mMusOn').setAttribute('aria-pressed', settings.music); $('mMusOff').setAttribute('aria-pressed', !settings.music);
   $('mRu').setAttribute('aria-pressed', settings.lang === 'ru'); $('mEn').setAttribute('aria-pressed', settings.lang === 'en');
 }
 function renderStageLabels() {
@@ -201,6 +198,7 @@ function handle(events) {
       if (shopTab === 'channel') buildTab();
     } else if (e.type === 'recorded' || e.type === 'edited') A.play('step');
     else if (e.type === 'comment') { if (shopTab === 'comments') buildTab(); }
+    else if (e.type === 'comment_ignored') { addFeed(esc(t('cm_ignored_feed', { name: commentAuthor(e.comment) })), 'bad'); A.play('bad'); if (shopTab === 'comments') buildTab(); }
     else if (e.type === 'milestone') { addFeed('<b>' + esc(t('ms', { n: fmtFull(e.value) })) + '</b>', 'ms'); toast(t('ms', { n: fmtFull(e.value) })); A.play('milestone'); }
     else if (e.type === 'second_ready') { toast(t('second_ready')); addFeed('<b>' + esc(t('second_ready')) + '</b>', 'ms'); renderChans(); A.play('good'); }
     else if (e.type === 'event') { renderEventModal(true); A.play(e.event.kind === 'monetized' ? 'milestone' : 'card'); }
@@ -244,7 +242,7 @@ function renderEventModal(force) {
   $('evCard').querySelectorAll('.opt').forEach(function (b) { b.addEventListener('click', function () { answer(b.getAttribute('data-opt')); }); });
   evShownAt = performance.now();
   updateEventButtons();
-  box.hidden = false; hideTip();
+  box.hidden = false;
 }
 var EV_LOCK = 1500;
 function updateEventButtons() {
@@ -277,7 +275,7 @@ function work(stage) {
 STAGES.forEach(function (st) { $('btn-' + st).addEventListener('click', function () { work(st); }); });
 document.addEventListener('keydown', function (e) {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (['pickBox', 'menuBox', 'evBox', 'quitBox', 'vidsBox', 'moveBox'].some(function (id) { return !$(id).hidden; })) return;
+  if (paused() || !$('evBox').hidden || !$('pickBox').hidden || !$('quitBox').hidden || !$('vidsBox').hidden) return;
   var map = { '1': 'rec', '2': 'edit', '3': 'up' };
   if (map[e.key]) { A.unlock(); work(map[e.key]); var b = $('btn-' + map[e.key]); b.style.transform = 'translateY(3px)'; setTimeout(function () { b.style.transform = ''; }, 80); }
 });
@@ -286,25 +284,11 @@ document.addEventListener('pointerdown', function () { A.unlock(); }, { passive:
 $('jobBtn').addEventListener('click', function () { if (!S.job.employed) return; $('quitWarn').hidden = !!(S.channels.length && S.channels.some(function (c) { return c.monetized; })); $('quitBox').hidden = false; A.play('card'); });
 $('quitNo').addEventListener('click', function () { $('quitBox').hidden = true; });
 $('quitYes').addEventListener('click', function () { if (L.quitJob(S)) { $('quitBox').hidden = true; toast(t('job_quit_done')); addFeed('<b>' + esc(t('job_quit_done')) + '</b>', 'ms'); A.play('milestone'); renderAll(); save(); } });
-L.FORMAT_IDS.forEach(function (f) { $('fmt-' + f).addEventListener('click', function () { if (L.setFormat(S, f)) { A.play('ui'); renderFormat(); save(); } }); });
 $('vidsClose').addEventListener('click', function () { $('vidsBox').hidden = true; });
 $('sfxBtn').addEventListener('click', function () { settings.sfx = !settings.sfx; A.setSfx(settings.sfx); renderToggles(); saveSettings(); A.play('ui'); });
 $('musicBtn').addEventListener('click', function () { settings.music = !settings.music; A.setMusic(settings.music); renderToggles(); saveSettings(); });
-$('menuBtn').addEventListener('click', function () { $('mConfirm').hidden = true; $('menuBox').hidden = false; A.play('ui'); });
-$('mClose').addEventListener('click', function () { $('menuBox').hidden = true; });
-$('mSfxOn').addEventListener('click', function () { settings.sfx = true; A.setSfx(true); renderToggles(); saveSettings(); A.play('ui'); });
-$('mSfxOff').addEventListener('click', function () { settings.sfx = false; A.setSfx(false); renderToggles(); saveSettings(); });
-$('mMusOn').addEventListener('click', function () { settings.music = true; A.setMusic(true); renderToggles(); saveSettings(); });
-$('mMusOff').addEventListener('click', function () { settings.music = false; A.setMusic(false); renderToggles(); saveSettings(); });
-$('mRu').addEventListener('click', function () { settings.lang = 'ru'; saveSettings(); applyTexts(); renderAll(); });
-$('mEn').addEventListener('click', function () { settings.lang = 'en'; saveSettings(); applyTexts(); renderAll(); });
-$('mHowto').addEventListener('click', function () { S.tut = 1; $('menuBox').hidden = true; save(); });
-$('mRestart').addEventListener('click', function () { $('mConfirm').hidden = false; });
-$('mNo').addEventListener('click', function () { $('mConfirm').hidden = true; });
-$('mYes').addEventListener('click', function () {
-  S = L.newState(); feedLines = []; shownEvent = null; $('menuBox').hidden = true; $('evBox').hidden = true;
-  save(); renderFeed(); renderChans(); buildTab(); renderAll(); openPicker('first');
-});
+$('mRu').addEventListener('click', function () { settings.lang = 'ru'; saveSettings(); applyTexts(); renderAll(); renderTitle(); });
+$('mEn').addEventListener('click', function () { settings.lang = 'en'; saveSettings(); applyTexts(); renderAll(); renderTitle(); });
 $('winGo').addEventListener('click', function () { $('winBox').hidden = true; });
 TABS.forEach(function (k) { $('tab-' + k).addEventListener('click', function () { setTab(k); A.play('ui'); }); });
 function setTab(k) {
@@ -415,7 +399,7 @@ function agoText(sec) {
 }
 function thumbHtml(v, ch) {
   var st = chStyle(ch);
-  return '<div class="thumb" style="' + patternCss(st) + '">' + THEME_ICON[ch.theme] + '<small>' + (v.fmt === 'short' ? 'SHORT · ' : '') + fmtLen(v.len || 600) + '</small></div>';
+  return '<div class="thumb" style="' + patternCss(st) + '">' + THEME_ICON[ch.theme] + '<small>' + fmtLen(v.len || 600) + '</small></div>';
 }
 function badgesHtml(v) {
   return (!v.mon ? '<span class="nomon">' + esc(t('b_nomon')) + '</span>' : '') + (v.cut ? '<span class="cut">' + esc(t('b_cut')) + '</span>' : '') +
@@ -447,13 +431,12 @@ function renderChannelPage() {
 function openAllVideos() {
   var ch = L.channel(S);
   $('vidsH').textContent = t('vids_h', { name: chName(S.active) });
-  $('vidsNote').textContent = t('perf_note') + ' ' + t('rpm_note');
+  $('vidsNote').textContent = '';
   var vids = S.videos.filter(function (v) { return v.ch === S.active; }).slice().reverse(), html = '';
   vids.forEach(function (v) {
     var views = L.videoViews(S, v), cell = function (k, val, hot) { return '<div' + (hot ? ' class="hot"' : '') + '><span>' + esc(t(k)) + '</span><strong>' + val + '</strong></div>'; };
-    html += '<div class="vcard">' + thumbHtml(v, ch) + '<div><b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(t('f_' + (v.fmt || 'video'))) + ' · ' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' + badgesHtml(v) + '</div>' +
-      '<div class="vstats">' + cell('st_views', fmt(views)) + cell('st_earned', fmtMoney(L.videoEarned(S, v))) + cell('st_rpm', v.mon ? '$' + dec(v.rpm || 0) : '—') +
-      cell('st_likes', fmt(views * L.likeRate(S))) + cell('st_dislikes', fmt(views * L.dislikeRate(S))) + cell('st_comments', fmt(v.cm || 0)) + cell('st_perf', (v.perf || 100) + '%', (v.perf || 100) >= 300) + '</div></div></div>';
+    html += '<div class="vcard">' + thumbHtml(v, ch) + '<div><b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' + badgesHtml(v) + '</div>' +
+      '<div class="vstats">' + cell('st_views', fmt(views)) + cell('st_earned', ch.monetized ? fmtMoney(L.videoEarned(S, v)) : esc(t('no_mon'))) + cell('st_comments', fmt(v.cm || 0)) + '</div></div></div>';
   });
   if (!vids.length) html = '<p class="note">' + esc(t('no_videos')) + '</p>';
   $('vidsList').innerHTML = html; $('vidsBox').hidden = false;
@@ -461,19 +444,27 @@ function openAllVideos() {
 
 /* ---------- Комментарии ---------- */
 var AVA = ['#ffd3cf', '#d9f5ea', '#dff1ff', '#fff0c2', '#e4dfff', '#ffe3cc'];
-function renderComments() {
-  var box = $('items'), list = S.comments.slice().reverse(), html = '';
-  html += '<p class="note">' + esc(S.staff.mg >= L.MG_AUTO_COMMENTS ? t('cm_auto_on') : t('cm_auto', { n: L.MG_AUTO_COMMENTS })) + '</p>';
-  if (!list.length) html += '<p class="note">' + esc(t('cm_empty')) + '</p>';
-  list.forEach(function (c) {
-    var authors = T().authors, name = authors[(c.pick * 7 + c.id) % authors.length], text = T().cm_text[c.kind][c.pick % 8], v = L.findVideo(S, c.vid);
-    html += '<div class="cm"><div class="cm-head"><span class="cm-ava" style="background:' + AVA[c.pick % AVA.length] + '">' + esc(name.charAt(0).toUpperCase()) + '</span><b>@' + esc(name) + '</b>' +
-      '<span class="kind ' + c.kind + '">' + esc(t('kind_' + c.kind)) + '</span></div><p>' + esc(text) + '</p>' +
-      (v ? '<small>' + esc(t('cm_to', { title: videoTitle(v) })) + ' · ' + esc(chName(c.ch)) + '</small>' : '') +
+function commentAuthor(c) { var a = T().authors; return a[(c.pick * 7 + c.id) % a.length]; }
+function commentHtml(c, ignored) {
+  var name = commentAuthor(c), text = T().cm_text[c.kind][c.pick % 8], v = L.findVideo(S, c.vid);
+  var left = L.commentLeft(S, c), total = L.COMMENT_HOURS * L.HOUR, pct = Math.max(0, left / total * 100);
+  return '<div class="cm' + (ignored ? ' ign' : '') + '" data-cid="' + c.id + '"><div class="cm-head"><span class="cm-ava" style="background:' + AVA[c.pick % AVA.length] + '">' + esc(name.charAt(0).toUpperCase()) + '</span><b>@' + esc(name) + '</b>' +
+    '<span class="kind ' + c.kind + '">' + esc(t('kind_' + c.kind)) + '</span></div><p>' + esc(text) + '</p>' +
+    (v ? '<small>' + esc(t('cm_to', { title: videoTitle(v) })) + '</small>' : '') +
+    (ignored ? '' : '<div class="cm-time' + (pct < 30 ? ' low' : '') + '"><div style="width:' + pct + '%"></div></div><small class="cm-left">' + esc(t('cm_left', { t: fmtClock(left) })) + '</small>' +
       '<div class="row"><button class="rbtn pos" type="button" data-c="' + c.id + '" data-tone="pos">' + esc(t('cm_pos')) + '</button>' +
       '<button class="rbtn" type="button" data-c="' + c.id + '" data-tone="neu">' + esc(t('cm_neu')) + '</button>' +
-      '<button class="rbtn neg" type="button" data-c="' + c.id + '" data-tone="neg">' + esc(t('cm_neg')) + '</button></div></div>';
-  });
+      '<button class="rbtn neg" type="button" data-c="' + c.id + '" data-tone="neg">' + esc(t('cm_neg')) + '</button></div>') + '</div>';
+}
+function renderComments() {
+  var box = $('items'), list = S.comments.slice().reverse(), html = '';
+  html += '<p class="note">' + esc(t('cm_deadline')) + ' ' + esc(S.staff.mg >= L.MG_AUTO_COMMENTS ? t('cm_auto_on') : t('cm_auto', { n: L.MG_AUTO_COMMENTS })) + '</p>';
+  if (!list.length) html += '<p class="note">' + esc(t('cm_empty')) + '</p>';
+  list.forEach(function (c) { html += commentHtml(c, false); });
+  if (S.ignored.length) {
+    html += '<div class="label">' + esc(t('cm_ignored_h', { n: S.ignoredCount })) + '</div>';
+    S.ignored.slice(-5).reverse().forEach(function (c) { html += commentHtml(c, true); });
+  }
   box.innerHTML = html;
   box.querySelectorAll('.rbtn').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -481,6 +472,17 @@ function renderComments() {
       toast(t('cm_res', { t: signed(d.trust), s: d.subs >= 1 ? t('cm_res_subs', { n: fmt(d.subs) }) : '' }));
       A.play(d.trust < 0 ? 'bad' : 'ui'); renderComments(); renderAll(); save();
     });
+  });
+}
+// Обновить только таймеры комментариев, не перерисовывая список (чтобы не сбивать клики)
+function tickCommentTimers() {
+  if (shopTab !== 'comments') return;
+  var total = L.COMMENT_HOURS * L.HOUR;
+  S.comments.forEach(function (c) {
+    var el = document.querySelector('.cm[data-cid="' + c.id + '"]'); if (!el) return;
+    var left = L.commentLeft(S, c), pct = Math.max(0, left / total * 100), bar = el.querySelector('.cm-time');
+    bar.className = 'cm-time' + (pct < 30 ? ' low' : ''); bar.firstChild.style.width = pct + '%';
+    el.querySelector('.cm-left').textContent = t('cm_left', { t: fmtClock(left) });
   });
 }
 
@@ -503,12 +505,6 @@ function renderJob() {
     $('jobBarWrap').hidden = true;
   }
 }
-function renderFormat() {
-  if (!S.channels.length) return;
-  L.FORMAT_IDS.forEach(function (f) { $('fmt-' + f).setAttribute('aria-pressed', S.format === f); });
-  var rpm = L.theme(S).rpm * L.FORMATS[S.format].rpm;
-  $('fmtDesc').textContent = t('fmt_d_' + S.format, { rpm: '$' + dec(Math.round(rpm * 100) / 100) });
-}
 function renderStages() {
   if (!S.channels.length) return;
   STAGES.forEach(function (st) {
@@ -523,7 +519,7 @@ function renderStages() {
   });
   $('cnt-edit').textContent = S.raw.length ? t('queue', { n: S.raw.length }) : '';
   $('cnt-up').textContent = S.edited.length ? t('queue', { n: S.edited.length }) : '';
-  var cf = L.itemFormat(S, 'rec'); $('cnt-rec').textContent = t('f_' + cf);
+
 }
 function renderFx() {
   var parts = [], n = L.strikes(S);
@@ -548,75 +544,244 @@ function renderAll() {
   $('money').textContent = fmtMoney(S.money); $('trust').textContent = Math.round(S.trust) + '%';
   $('quality').textContent = '×' + dec(Math.round(L.quality(S) * 10) / 10); $('videos').textContent = fmt(ch.videos);
   var cb = $('cmBadge'); cb.hidden = !S.comments.length; cb.textContent = S.comments.length > 9 ? '9+' : S.comments.length;
-  updateChanSubs(); renderJob(); renderFormat(); renderStages(); renderShop(); renderFx(); renderEventModal(false); renderTip();
+  updateChanSubs(); renderJob(); renderStages(); renderShop(); renderFx(); renderEventModal(false);
 }
 
-/* ---------- Обучение ---------- */
-var tipTarget = null;
+/* ---------- Обучение: плашка над игрой, подсвечивает нужное место и ничего не закрывает ---------- */
+var tutTarget = null, TUT_STEPS = 11;
 function cheapestGear() {
   var best = null, cost = Infinity;
   L.GEAR_IDS.forEach(function (k) { var c = L.gearCost(S, k); if (c != null && !L.gearBlocked(S, k) && c < cost) { cost = c; best = k; } });
   return { kind: best, cost: cost };
 }
 function tutStep() {
-  var tt = th(L.channel(S).theme), videos = L.totalVideos(S), gearSum = 0, staffSum = S.staff.op + S.staff.ed + S.staff.mg;
+  var videos = L.totalVideos(S), gearSum = 0, staffSum = S.staff.op + S.staff.ed + S.staff.mg;
   L.GEAR_IDS.forEach(function (k) { gearSum += S.gear[k]; });
   switch (S.tut) {
-    case 1: return { done: S.raw.length > 0 || S.edited.length > 0 || videos > 0, el: $("btn-rec"), text: t("tut_1", { btn: t("btn_rec") }) };
-    case 2: return { done: S.edited.length > 0 || videos > 0, el: $("btn-edit"), text: t("tut_2", { btn: t("btn_edit") }) };
-    case 3: return { done: videos > 0, el: $('btn-up'), text: t('tut_3') };
-    case 4: return { el: $('stats'), text: t('tut_4'), ok: true };
-    case 5: {
-      if (!S.job.employed) return { done: true };
-      return { el: $('job'), text: t('tut_5'), ok: true };
-    }
-    case 6: {
-      var cg = cheapestGear();
-      if (gearSum > 0) return { done: true };
-      if (!cg.kind || S.money < cg.cost) return { wait: true };
-      if (shopTab !== 'gear') setTab('gear');
-      return { el: $('buy-' + cg.kind), text: t('tut_6') };
-    }
-    case 7: {
+    case 1: return { done: S.raw.length > 0 || S.edited.length > 0 || videos > 0, el: $('btn-rec') };
+    case 2: return { done: S.edited.length > 0 || videos > 0, el: $('btn-edit') };
+    case 3: return { done: videos > 0, el: $('btn-up') };
+    case 4: return { el: $('stats'), ok: true };
+    case 5: return { el: $('monChip'), ok: true };
+    case 6: return S.job.employed ? { el: $('job'), ok: true } : { done: true };
+    case 7: return { el: $('trustMini'), ok: true };
+    case 8:
       if (S.replied > 0) return { done: true };
       if (!S.comments.length) return { wait: true };
-      return { el: shopTab === 'comments' ? $('items').querySelector('.rbtn') : $('tab-comments'), text: t('tut_7') };
+      return { el: shopTab === 'comments' ? $('items').querySelector('.rbtn') : $('tab-comments') };
+    case 9: {
+      var cg = cheapestGear(); if (gearSum > 0) return { done: true };
+      if (!cg.kind || S.money < cg.cost) return { wait: true };
+      return { el: shopTab === 'gear' ? $('buy-' + cg.kind) : $('tab-gear') };
     }
-    case 8: {
+    case 10:
       if (staffSum > 0) return { done: true };
       if (S.money < 120) return { wait: true };
-      return { el: shopTab === 'team' ? $('buy-mg') : $('tab-team'), text: t('tut_8') };
-    }
-    case 9: {
+      return { el: shopTab === 'team' ? $('buy-mg') : $('tab-team') };
+    case 11:
       if (S.home > 0) return { done: true };
       if (S.money < L.HOMES[1].cost) return { wait: true };
-      return { el: shopTab === 'home' ? $('buy-home1') : $('tab-home'), text: t('tut_9') };
-    }
+      return { el: shopTab === 'home' ? $('buy-home1') : $('tab-home') };
+    case 12: return { el: null, ok: true, final: true };
     default: return null;
   }
 }
-function renderTip() {
-  if (!S.channels.length || ['pickBox', 'menuBox', 'winBox', 'evBox', 'quitBox', 'vidsBox', 'moveBox'].some(function (id) { return !$(id).hidden; })) { hideTip(); return; }
+function renderTut() {
+  if (!slot || !S.channels.length) { hideTut(); return; }
   var step = tutStep(), guard = 0;
-  while (step && step.done && guard++ < 12) { S.tut++; step = tutStep(); }
-  if (!step || step.wait || !step.el) { hideTip(); return; }
-  if (tipTarget !== step.el) {
-    if (tipTarget) tipTarget.classList.remove('pulse');
-    tipTarget = step.el; tipTarget.classList.add('pulse');
-    var tr = tipTarget.getBoundingClientRect();
-    if (tr.top < 0 || tr.bottom > window.innerHeight - 140) tipTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  while (step && step.done && guard++ < 14) { S.tut++; step = tutStep(); }
+  if (!step || step.wait) { hideTut(); return; }
+  var bar = $('tutBar');
+  $('tutNum').textContent = step.final ? '✓' : t('tut_step', { n: S.tut, m: TUT_STEPS });
+  $('tutTxt').textContent = step.final ? t('tut_done') : t('tut_' + S.tut);
+  $('tutNext').hidden = !step.ok; $('tutSkip').hidden = !!step.final;
+  bar.hidden = false;
+  if (tutTarget !== step.el) {
+    if (tutTarget) tutTarget.classList.remove('pulse');
+    tutTarget = step.el;
+    if (tutTarget) {
+      tutTarget.classList.add('pulse');
+      var r = tutTarget.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > window.innerHeight) tutTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
   }
-  var tip = $('tip');
-  $('tipTxt').textContent = step.text; $('tipOk').hidden = !step.ok; tip.hidden = false;
-  var r = step.el.getBoundingClientRect(), tw = tip.offsetWidth, thh = tip.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
-  var left = Math.min(Math.max(16, r.left + r.width / 2 - tw / 2), vw - tw - 16), top = r.bottom + 12;
-  if (top + thh > vh - 8 && r.top - thh - 12 > 8) top = r.top - thh - 12;
-  tip.style.left = left + 'px'; tip.style.top = Math.max(8, Math.min(top, vh - thh - 8)) + 'px';
 }
-function hideTip() { $('tip').hidden = true; if (tipTarget) { tipTarget.classList.remove('pulse'); tipTarget = null; } }
-$('tipOk').addEventListener('click', function () { S.tut++; A.play('ui'); renderTip(); save(); });
-$('tipSkip').addEventListener('click', function () { S.tut = 99; hideTip(); save(); });
-window.addEventListener('scroll', function () { if (!$('tip').hidden) renderTip(); }, { passive: true });
+function hideTut() { $('tutBar').hidden = true; if (tutTarget) { tutTarget.classList.remove('pulse'); tutTarget = null; } }
+$('tutNext').addEventListener('click', function () { S.tut++; A.play('ui'); renderTut(); save(); });
+$('tutSkip').addEventListener('click', function () { S.tut = 99; hideTut(); save(); });
+
+/* ---------- Окна поверх игры: пока любое открыто, игра на паузе ---------- */
+var PAUSING = ['mainMenu', 'menuBox', 'savesBox', 'settingsBox', 'howtoBox', 'codeBox', 'confirmBox', 'devGate', 'devBox'];
+function paused() { return PAUSING.some(function (id) { return !$(id).hidden; }); }
+function show(id) { $(id).hidden = false; }
+function hide(id) { $(id).hidden = true; }
+var confirmCb = null;
+function ask(text, cb) { $('confirmTxt').textContent = text; confirmCb = cb; show('confirmBox'); }
+$('confirmNo').addEventListener('click', function () { hide('confirmBox'); confirmCb = null; });
+$('confirmYes').addEventListener('click', function () { hide('confirmBox'); var cb = confirmCb; confirmCb = null; if (cb) cb(); });
+
+/* ---------- Главное меню ---------- */
+function renderTitle() {
+  var m = meta(), last = m.last && readSlot(m.last), btn = $('mmContinue');
+  btn.disabled = !last;
+  btn.innerHTML = esc(t('mm_continue')) + (last ? '<small>' + esc(slotInfo(last)) + '</small>' : '');
+}
+function slotInfo(d) {
+  if (!d || !d.channels || !d.channels.length) return t('slot_empty');
+  var best = d.channels.reduce(function (a, c) { return c.subs > a.subs ? c : a; }, d.channels[0]);
+  var day = 1 + Math.floor((18 + d.played / L.HOUR) / 24);
+  return t('slot_info', { ch: best.name || th(best.theme).name, subs: fmt(best.subs), d: day });
+}
+function openTitle() { slot = 0; S = L.newState(); hideTut(); ['menuBox', 'evBox', 'pickBox', 'winBox', 'quitBox', 'vidsBox'].forEach(hide); renderTitle(); show('mainMenu'); }
+function playSlot(n) {
+  var d = readSlot(n);
+  S = d ? L.restore(d) : L.newState(); slot = n;
+  var m = meta(); m.last = n; setMeta(m);
+  feedLines = []; shownEvent = null; lastPublish = -9;
+  ['mainMenu', 'savesBox', 'menuBox'].forEach(hide);
+  applyTexts(); renderAll();
+  if (!S.channels.length) openPicker('first');
+}
+$('mmContinue').addEventListener('click', function () { var m = meta(); if (m.last && readSlot(m.last)) { A.unlock(); A.play('ui'); playSlot(m.last); } });
+$('mmNew').addEventListener('click', function () { A.unlock(); A.play('ui'); openSaves('new'); });
+$('mmLoad').addEventListener('click', function () { A.unlock(); A.play('ui'); openSaves('load'); });
+$('mmSettings').addEventListener('click', function () { A.unlock(); A.play('ui'); openSettings(); });
+$('mmHowto').addEventListener('click', function () { A.unlock(); A.play('ui'); openHowto(); });
+
+/* ---------- Меню паузы ---------- */
+$('menuBtn').addEventListener('click', function () { show('menuBox'); A.play('ui'); });
+$('pResume').addEventListener('click', function () { hide('menuBox'); });
+$('pSave').addEventListener('click', function () { save(); toast(t('saved')); A.play('good'); });
+$('pSaves').addEventListener('click', function () { openSaves('load'); });
+$('pSettings').addEventListener('click', function () { openSettings(); });
+$('pHowto').addEventListener('click', function () { openHowto(); });
+$('pExit').addEventListener('click', function () { save(); openTitle(); });
+
+/* ---------- Сохранения ---------- */
+var savesMode = 'load';
+function openSaves(mode) {
+  savesMode = mode; $('savesH').textContent = t(mode === 'new' ? 'mm_new' : 'mm_load');
+  $('importWrap').hidden = true; $('importIn').value = ''; renderSlots(); show('savesBox');
+}
+function fmtDate(ms) { try { return new Date(ms).toLocaleString(settings.lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function renderSlots() {
+  var box = $('slots'), html = '';
+  for (var n = 1; n <= SLOTS; n++) {
+    var d = readSlot(n), has = d && d.channels && d.channels.length;
+    html += '<div class="slot' + (n === slot ? ' cur' : '') + '"><div><b>' + esc(t('slot_n', { n: n })) + '</b><span>' + esc(has ? slotInfo(d) : t('slot_empty')) + '</span>' +
+      (has && d.savedAt ? '<span>' + esc(t('slot_saved', { time: fmtDate(d.savedAt) })) + '</span>' : '') + '</div><div class="row">';
+    if (savesMode === 'new') html += '<button class="sbtn go" type="button" data-act="new" data-n="' + n + '">' + esc(t('slot_new')) + '</button>';
+    else if (has) html += '<button class="sbtn go" type="button" data-act="play" data-n="' + n + '">' + esc(t('slot_play')) + '</button>';
+    if (has) html += '<button class="sbtn" type="button" data-act="code" data-n="' + n + '">' + esc(t('slot_code')) + '</button><button class="sbtn del" type="button" data-act="del" data-n="' + n + '">' + esc(t('slot_delete')) + '</button>';
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('.sbtn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var n = +b.getAttribute('data-n'), act = b.getAttribute('data-act'), d = readSlot(n), has = d && d.channels && d.channels.length;
+      A.play('ui');
+      if (act === 'play') { if (slot) save(); playSlot(n); }
+      else if (act === 'new') {
+        var go = function () { try { localStorage.removeItem(SLOT_KEY + n); } catch (e) {} if (slot && slot !== n) save(); playSlot(n); S.tut = 0; };
+        if (has) ask(t('slot_overwrite_q', { n: n }), go); else go();
+      } else if (act === 'del') ask(t('slot_delete_q', { n: n }), function () { try { localStorage.removeItem(SLOT_KEY + n); } catch (e) {} if (slot === n) { openTitle(); show('savesBox'); } renderSlots(); renderTitle(); });
+      else if (act === 'code') { if (n === slot) save(); $('codeOut').value = btoa(unescape(encodeURIComponent(JSON.stringify(readSlot(n))))); show('codeBox'); }
+    });
+  });
+}
+$('savesBack').addEventListener('click', function () { hide('savesBox'); });
+$('importBtn').addEventListener('click', function () {
+  $('importWrap').hidden = false; var row = $('importSlots'); row.innerHTML = '';
+  for (var n = 1; n <= SLOTS; n++) (function (n) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'sbtn go'; b.textContent = t('slot_n', { n: n });
+    b.addEventListener('click', function () {
+      var data = null;
+      try { data = JSON.parse(decodeURIComponent(escape(atob($('importIn').value.trim())))); } catch (e) {}
+      if (!data || data.v !== L.newState().v || !data.channels) { toast(t('import_bad')); A.play('bad'); return; }
+      var go = function () { writeSlot(n, data); toast(t('import_ok', { n: n })); A.play('good'); $('importWrap').hidden = true; renderSlots(); renderTitle(); };
+      var d = readSlot(n); if (d && d.channels && d.channels.length) ask(t('slot_overwrite_q', { n: n }), go); else go();
+    });
+    row.appendChild(b);
+  })(n);
+});
+$('codeBack').addEventListener('click', function () { hide('codeBox'); });
+$('codeCopy').addEventListener('click', function () {
+  var el = $('codeOut');
+  var fallback = function () { el.focus(); el.select(); toast(t('copy_fail')); };
+  try { navigator.clipboard.writeText(el.value).then(function () { toast(t('copied')); }, fallback); } catch (e) { fallback(); }
+});
+
+/* ---------- Настройки и правила ---------- */
+function openSettings() {
+  $('volSfx').value = settings.sfxVol; $('volMusic').value = settings.musicVol;
+  $('volSfxV').textContent = settings.sfxVol + '%'; $('volMusicV').textContent = settings.musicVol + '%';
+  $('setTut').hidden = !slot; renderToggles(); show('settingsBox');
+}
+$('volSfx').addEventListener('input', function () { settings.sfxVol = +this.value; $('volSfxV').textContent = this.value + '%'; A.setSfxVolume(settings.sfxVol / 100); if (!settings.sfx && settings.sfxVol > 0) { settings.sfx = true; A.setSfx(true); renderToggles(); } saveSettings(); });
+$('volSfx').addEventListener('change', function () { A.play('ui'); });
+$('volMusic').addEventListener('input', function () { settings.musicVol = +this.value; $('volMusicV').textContent = this.value + '%'; A.setMusicVolume(settings.musicVol / 100); if (!settings.music && settings.musicVol > 0) { settings.music = true; A.setMusic(true); renderToggles(); } saveSettings(); });
+$('settingsBack').addEventListener('click', function () { hide('settingsBox'); });
+$('setTut').addEventListener('click', function () { S.tut = 1; ['settingsBox', 'menuBox'].forEach(hide); save(); renderTut(); });
+function openHowto() {
+  $('howtoList').innerHTML = T().howto.map(function (r) { return '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>'; }).join('');
+  show('howtoBox');
+}
+$('howtoBack').addEventListener('click', function () { hide('howtoBox'); });
+
+/* ---------- Секретное меню разработчика: 5 кликов по логотипу + пароль ---------- */
+var logoClicks = [], timeScale = 1;
+function logoClick() {
+  var nowMs = performance.now();
+  logoClicks = logoClicks.filter(function (x) { return nowMs - x < 2000; }); logoClicks.push(nowMs);
+  if (logoClicks.length >= 5) {
+    logoClicks = [];
+    if (settings.dev) openDev();
+    else { $('devPass').value = ''; $('devWrong').hidden = true; show('devGate'); setTimeout(function () { $('devPass').focus(); }, 50); A.play('card'); }
+  }
+}
+$('logoTxt').parentNode.addEventListener('click', logoClick);
+$('titleLogo').addEventListener('click', logoClick);
+function tryPass() {
+  if (window.sha256($('devPass').value.trim()) === DEV_HASH) { settings.dev = true; saveSettings(); hide('devGate'); A.play('milestone'); openDev(); }
+  else {
+    var card = $('devGate').querySelector('.modal'); card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+    $('devWrong').textContent = t('dev_wrong'); $('devWrong').hidden = false; A.play('bad');
+  }
+}
+$('devGo').addEventListener('click', tryPass);
+$('devPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') tryPass(); });
+$('devGateBack').addEventListener('click', function () { hide('devGate'); });
+$('devClose').addEventListener('click', function () { hide('devBox'); });
+$('devLock').addEventListener('click', function () { settings.dev = false; timeScale = 1; saveSettings(); hide('devBox'); });
+function devAct(fn) { return function () { if (!slot || !S.channels.length) { toast(t('slot_empty')); return; } fn(); A.play('buy'); renderChans(); buildTab(); renderAll(); save(); toast(t('dev_done')); }; }
+function openDev() {
+  var ch = function () { return L.channel(S); };
+  var rows = [
+    ['dev_money', [['+$1K', function () { S.money += 1e3; }], ['+$100K', function () { S.money += 1e5; }], ['+$10M', function () { S.money += 1e7; }]]],
+    ['dev_subs', [['+1K', function () { ch().subs += 1e3; }], ['+100K', function () { ch().subs += 1e5; }], ['+900K', function () { ch().subs += 9e5; }]]],
+    ['dev_speed', [['×1', function () { timeScale = 1; }], ['×5', function () { timeScale = 5; }], ['×20', function () { timeScale = 20; }]]],
+    ['dev_misc', [
+      [t('dev_trust'), function () { S.trust = 100; }],
+      [t('dev_mon'), function () { ch().subs = Math.max(ch().subs, L.MONETIZE_AT); }],
+      [t('dev_gear'), function () { S.home = L.HOMES.length - 1; L.GEAR_IDS.forEach(function (k) { S.gear[k] = L.GEAR[k].length - 1; }); }],
+      [t('dev_team'), function () { for (var k in L.STAFF) S.staff[k] = L.STAFF[k].max; }],
+      [t('dev_home'), function () { if (S.home < L.HOMES.length - 1) S.home++; }],
+      [t('dev_day'), function () { S.played += 24 * L.HOUR; }],
+      [t('dev_strikes'), function () { S.effects = S.effects.filter(function (e) { return e.type !== 'strike'; }); }],
+      [t('dev_comments'), function () { var v = S.videos.filter(function (x) { return x.ch === S.active; }).pop(); if (!v) return; for (var i = 0; i < 5; i++) S.comments.push({ id: S.nextCid++, vid: v.id, ch: v.ch, kind: ['pos', 'q', 'hate'][i % 3], pick: Math.floor(Math.random() * 1000), t: S.played }); }],
+      [t('dev_event'), function () { if (!S.event) { S.event = L.makeEvent(S, Math.random); hide('devBox'); } }],
+      [t('dev_second'), function () { S.channels[0].subs = Math.max(S.channels[0].subs, L.SECOND_CHANNEL_AT); }]
+    ]]
+  ];
+  var grid = $('devGrid'); grid.innerHTML = '';
+  rows.forEach(function (r) {
+    var div = document.createElement('div'); div.className = 'devrow';
+    div.innerHTML = '<span>' + esc(t(r[0])) + '</span><div class="row"></div>';
+    r[1].forEach(function (b) { var el = document.createElement('button'); el.type = 'button'; el.className = 'sbtn'; el.textContent = b[0]; el.addEventListener('click', devAct(b[1])); div.querySelector('.row').appendChild(el); });
+    grid.appendChild(div);
+  });
+  show('devBox');
+}
 
 /* ---------- Холст и главный цикл ---------- */
 var cv = $('cv'), ctx = cv.getContext('2d');
@@ -625,17 +790,18 @@ function resize() {
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
   ctx.setTransform(cv.width / window.Room.W, 0, 0, cv.height / window.Room.H, 0, 0);
 }
-window.addEventListener('resize', function () { resize(); renderTip(); });
+window.addEventListener('resize', resize);
 
 var last = performance.now(), uiTimer = 0, saveTimer = 0, chTimer = 0;
 function frame(ts) {
   var dt = Math.min(0.25, (ts - last) / 1000); last = ts; now += dt;
-  if ($('moveBox').hidden) handle(L.tick(S, dt, Math.random)); else updateMove();
+  var running = slot && !paused();
+  if (running) { if ($('moveBox').hidden) handle(L.tick(S, dt * timeScale, Math.random)); else updateMove(); }
   if (S.event && !$('evBox').hidden) updateEventButtons();
   uiTimer += dt; saveTimer += dt; chTimer += dt;
-  if (uiTimer > 0.15) { uiTimer = 0; renderAll(); }
-  if (chTimer > 2 && shopTab === 'channel' && $('vidsBox').hidden) { chTimer = 0; renderChannelPage(); }
-  if (saveTimer > 5) { saveTimer = 0; save(); }
+  if (uiTimer > 0.15 && slot) { uiTimer = 0; renderAll(); renderTut(); tickCommentTimers(); }
+  if (chTimer > 2 && shopTab === 'channel' && $('vidsBox').hidden && slot) { chTimer = 0; renderChannelPage(); }
+  if (saveTimer > 5 && running) { saveTimer = 0; save(); }
   var selfRec = now - lastClick.rec < 0.6, selfEdit = now - lastClick.edit < 0.6, selfUp = now - lastClick.up < 0.6;
   var lastSelf = Math.max(lastClick.rec, lastClick.edit, lastClick.up);
   window.Room.draw(ctx, S, L, now, {
@@ -652,8 +818,9 @@ document.addEventListener('visibilitychange', function () { if (document.hidden)
 window.addEventListener('beforeunload', save);
 
 function start() {
-  resize(); applyTexts(); renderAll();
-  if (!S.channels.length) openPicker('first');
+  resize(); applyTexts();
+  if (hotData && hotData.slot) { S = L.restore(hotData.state); slot = hotData.slot; applyTexts(); renderAll(); }
+  else openTitle();
   requestAnimationFrame(function (ts) { last = ts; frame(ts); });
 }
 if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(start); else start();

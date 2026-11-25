@@ -18,6 +18,8 @@
   var MAX_VIDEOS = 300;             // сколько последних видео хранится в списке канала
   var MG_AUTO_COMMENTS = 5;         // с этого уровня менеджер сам отвечает на комментарии
   var MG_AUTO_EVENTS = 10;          // с этого уровня менеджер сам решает простые события
+  var COMMENT_HOURS = 12;           // столько игровых часов (~45 с) есть на ответ, потом комментарий проигнорирован
+  var IGNORE_TRUST = 1.5;           // сколько доверия теряется за проигнорированный комментарий
 
   var WORK = { rec: 10, edit: 12, up: 6 };
 
@@ -91,7 +93,7 @@
 
   function newState() {
     return {
-      v: 4,
+      v: 5,
       money: 0, trust: 70,
       raw: [], edited: [],          // очереди: формат каждого отснятого и смонтированного видео
       format: 'video',
@@ -101,7 +103,7 @@
       staff: { op: 0, ed: 0, mg: 0 },
       channels: [], active: 0,
       videos: [], nextVid: 1,
-      comments: [], nextCid: 1, replied: 0,
+      comments: [], nextCid: 1, replied: 0, ignored: [], ignoredCount: 0,
       effects: [],
       event: null, nextEventAt: 0,
       job: { employed: true, active: false, end: 0, shifts: 0, lastDay: 0 },
@@ -207,7 +209,7 @@
     ch.videos++; ch.catalog += views; ch.catalogRev += views * rpm;
     ch.views += views; ch.subs += subs; ch.likes += views * likeRate(s); ch.earned += money; s.money += money;
     if (viral) addTrust(s, 1);
-    var n = 1 + (rng() < 0.5 ? 1 : 0) + (viral ? 2 : 0);
+    var n = (rng() < 0.6 ? 1 : 0) + (viral ? 2 : 0);
     for (var c = 0; c < n; c++) addComment(s, v, rng, events);
     events.push({ type: 'published', video: v, views: views, subs: subs, money: money, viral: viral, boost: v.src });
   }
@@ -249,7 +251,7 @@
       return;
     }
     s.comments.push(c);
-    if (s.comments.length > MAX_COMMENTS) s.comments.shift();
+    if (s.comments.length > MAX_COMMENTS) ignoreComment(s, s.comments[0], events);
     events.push({ type: 'comment', comment: c });
   }
   // tone: 'pos' | 'neu' | 'neg'
@@ -261,6 +263,15 @@
     addTrust(s, d.trust); ch.subs += d.subs; s.replied++;
     return d;
   }
+  // Не ответил вовремя — комментарий уходит в «проигнорированные», канал теряет доверие
+  function ignoreComment(s, c, events) {
+    var i = s.comments.indexOf(c); if (i < 0) return;
+    s.comments.splice(i, 1);
+    s.ignored.push(c); if (s.ignored.length > 20) s.ignored.shift();
+    s.ignoredCount++; addTrust(s, -IGNORE_TRUST);
+    if (events) events.push({ type: 'comment_ignored', comment: c });
+  }
+  function commentLeft(s, c) { return COMMENT_HOURS * HOUR - (s.played - c.t); }
   function replyComment(s, cid, tone) {
     for (var i = 0; i < s.comments.length; i++) if (s.comments[i].id === cid) {
       var c = s.comments.splice(i, 1)[0];
@@ -405,6 +416,7 @@
         events.push({ type: 'event', event: s.event });
       }
     }
+    for (var ci = s.comments.length - 1; ci >= 0; ci--) if (commentLeft(s, s.comments[ci]) <= 0) ignoreComment(s, s.comments[ci], events);
     for (var e = s.effects.length - 1; e >= 0; e--) {
       var ef = s.effects[e];
       if (ef.until && ef.until <= s.played) { s.effects.splice(e, 1); events.push({ type: 'effect_end', effect: ef.type }); }
@@ -458,7 +470,7 @@
 
   function restore(data) {
     var s = newState();
-    if (!data || typeof data !== 'object' || data.v !== 4) return s;
+    if (!data || typeof data !== 'object' || data.v !== 5) return s;
     for (var k in s) {
       if (!(k in data)) continue;
       if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k])) {
@@ -472,7 +484,7 @@
   }
 
   var api = {
-    FORMATS: FORMATS, FORMAT_IDS: FORMAT_IDS, JOB_FROM: JOB_FROM, JOB_TO: JOB_TO,
+    FORMATS: FORMATS, FORMAT_IDS: FORMAT_IDS, COMMENT_HOURS: COMMENT_HOURS, IGNORE_TRUST: IGNORE_TRUST, JOB_FROM: JOB_FROM, JOB_TO: JOB_TO,
     GOAL_SUBS: GOAL_SUBS, SECOND_CHANNEL_AT: SECOND_CHANNEL_AT, MONETIZE_AT: MONETIZE_AT, MAX_STRIKES: MAX_STRIKES,
     STRIKE_TIME: STRIKE_TIME, HOUR: HOUR, SHIFT_HOURS: SHIFT_HOURS, MG_AUTO_COMMENTS: MG_AUTO_COMMENTS, MG_AUTO_EVENTS: MG_AUTO_EVENTS,
     WORK: WORK, THEMES: THEMES, THEME_IDS: THEME_IDS, HOMES: HOMES, GEAR: GEAR, GEAR_IDS: GEAR_IDS, STAFF: STAFF, MILESTONES: MILESTONES,
@@ -480,7 +492,7 @@
     channel: channel, theme: theme, bestSubs: bestSubs, totalVideos: totalVideos, clock: clock, salary: salary,
     quality: quality, power: power, workNeed: workNeed, stageOpen: stageOpen, canWork: canWork, trustMul: trustMul,
     strikes: strikes, strikesOn: strikesOn, broken: broken, videoViews: videoViews, likeRate: likeRate, findVideo: findVideo,
-    addWork: addWork, tick: tick, staffRate: staffRate, passiveRate: passiveRate, quitJob: quitJob, setFormat: setFormat, itemFormat: itemFormat, videoEarned: videoEarned, dislikeRate: dislikeRate,
+    addWork: addWork, tick: tick, staffRate: staffRate, passiveRate: passiveRate, quitJob: quitJob, commentLeft: commentLeft, addTrust: addTrust, makeEvent: makeEvent, setFormat: setFormat, itemFormat: itemFormat, videoEarned: videoEarned, dislikeRate: dislikeRate,
     replyComment: replyComment, eventOptions: eventOptions, canChoose: canChoose, resolveEvent: resolveEvent,
     gearCost: gearCost, gearBlocked: gearBlocked, gearNeedsHome: gearNeedsHome, buyGear: buyGear,
     homeCost: homeCost, moveHome: moveHome, staffCost: staffCost, hire: hire

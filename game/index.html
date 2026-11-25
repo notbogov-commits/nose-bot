@@ -214,7 +214,7 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .feed p.bad { color: #c4453a; }
 
 /* Окна */
-.overlay { position: fixed; inset: 0; background: rgba(31, 35, 56, .6); display: grid; place-items: center; z-index: 20; overflow-y: auto;
+.overlay { position: fixed; inset: 0; background: rgba(31, 35, 56, .6); display: grid; place-items: center; z-index: 30; overflow-y: auto;
   padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 .modal { max-width: 440px; width: 100%; padding: 22px; display: grid; gap: 12px; }
 .modal h2 { margin: 0; font: 800 26px var(--display); text-wrap: balance; }
@@ -304,7 +304,67 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .scard .av svg { width: 20px; height: 20px; }
 .scard[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--sun), 0 4px 0 var(--line); }
 
-/* Обучение */
+/* Главное меню и меню паузы */
+.title-screen { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; overflow-y: auto;
+  background: radial-gradient(circle at 20% 20%, #ffe3cc 0 18%, transparent 19%), radial-gradient(circle at 85% 75%, #e4dfff 0 22%, transparent 23%), var(--bg);
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.title-card { width: 100%; max-width: 380px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+.title-logo { font: 800 44px var(--display); display: flex; align-items: center; gap: 12px; cursor: default; user-select: none; }
+.title-logo i { display: inline-grid; place-items: center; width: 48px; height: 48px; background: var(--sun); border: 4px solid var(--line); border-radius: 50%; }
+.title-logo i::after { content: ""; width: 16px; height: 16px; border-radius: 50%; background: var(--rec); border: 3px solid var(--line); }
+.title-sub { margin: 0; color: var(--ink-soft); font-weight: 700; max-width: 32ch; }
+.title-btns { display: grid; gap: 10px; width: 100%; margin-top: 8px; }
+.mbtn { font: 800 17px var(--display); padding: 13px 16px; border: 3px solid var(--line); border-radius: 14px; background: var(--card); cursor: pointer; box-shadow: 0 4px 0 var(--line); width: 100%; }
+.mbtn.primary { background: var(--rec); color: #fff; }
+.mbtn:disabled { opacity: .45; cursor: not-allowed; }
+.mbtn small { display: block; font: 700 12px var(--body); opacity: .85; margin-top: 2px; }
+.mbtn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+.modal.menu { max-width: 340px; }
+.modal.wide { max-width: 560px; }
+.slots { display: grid; gap: 8px; }
+.slot { border: 2.5px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.slot.cur { background: #fff7dc; }
+.slot b { font: 700 16px var(--display); display: block; }
+.slot span { font-size: 12.5px; color: var(--ink-soft); display: block; overflow-wrap: anywhere; }
+.slot .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.sbtn { font: 700 13px var(--display); padding: 6px 10px; border: 2px solid var(--line); border-radius: 9px; background: var(--card); cursor: pointer; }
+.sbtn.go { background: var(--mint); color: #fff; } .sbtn.del { color: #c4453a; }
+textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace; border: 2.5px solid var(--line); border-radius: 10px; padding: 8px; resize: vertical; background: var(--bg); color: var(--ink); }
+.importwrap { display: grid; gap: 8px; }
+.slider { display: grid; grid-template-columns: minmax(0, 1fr) 140px 40px; gap: 10px; align-items: center; font-weight: 700; }
+.slider input { width: 100%; accent-color: var(--grape); }
+.slider b { font: 700 14px var(--display); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 420px) { .slider { grid-template-columns: minmax(0, 1fr) 40px; } .slider input { grid-column: 1 / -1; grid-row: 2; } }
+.howto { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.howto div { border: 2px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.howto b { font: 700 15px var(--display); display: block; }
+.howto span { font-size: 14px; color: var(--ink-soft); }
+.devgate { text-align: center; justify-items: center; }
+.devgate .stop { width: 64px; height: 64px; border-radius: 50%; border: 4px solid var(--line); background: var(--rec); color: #fff; display: grid; place-items: center; font: 800 36px var(--display); }
+.devgate .namein { text-align: center; }
+.wrong { color: #c4453a !important; font-weight: 800; }
+.shake { animation: shake .4s; }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+.devpanel { max-height: calc(100vh - 32px); overflow-y: auto; }
+.devgrid { display: grid; gap: 10px; }
+.devrow { display: grid; gap: 6px; }
+.devrow > span { font: 700 12px var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); }
+.devrow .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.mini small { display: block; font-size: 10.5px; line-height: 1.25; color: var(--ink-soft); font-weight: 600; }
+.cm-time { height: 5px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+.cm-time div { height: 100%; background: var(--mint); }
+.cm-time.low div { background: var(--rec); }
+.cm.ign { opacity: .6; }
+.cm.ign .row { display: none; }
+
+/* Обучение — плашка над игрой, ничего не закрывает */
+.tutbar { padding: 12px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #fff7dc; }
+.tutnum { font: 800 12px var(--display); background: var(--ink); color: #fff; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.tutbar p { margin: 0; font-weight: 700; }
+.tutbtns { display: flex; gap: 10px; align-items: center; }
+@media (max-width: 600px) { .tutbar { grid-template-columns: minmax(0, 1fr); } .tutbtns { justify-content: space-between; } }
+
+/* Обучение (старое) */
 .tip { position: fixed; z-index: 15; max-width: min(320px, calc(100vw - 32px)); padding: 12px 14px; display: grid; gap: 8px; background: var(--ink); color: #fff; border-radius: 14px; border: 3px solid var(--sun); box-shadow: 0 5px 0 rgba(31,35,56,.35); font-weight: 700; animation: pop .3s ease-out; }
 .tip .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .tip button { font: 700 13px var(--display); border-radius: 8px; padding: 5px 10px; cursor: pointer; border: 2px solid var(--sun); background: var(--sun); color: var(--ink); }
@@ -312,7 +372,7 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .pulse { animation: pulse 1.2s ease-in-out infinite; position: relative; z-index: 1; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,194,61,.9), 0 4px 0 var(--line); } 50% { box-shadow: 0 0 0 8px rgba(255,194,61,0), 0 4px 0 var(--line); } }
 
-.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: #fff; font: 700 15px var(--display); padding: 10px 18px; border-radius: 999px; z-index: 30; border: 3px solid var(--sun); max-width: calc(100% - 32px); text-align: center; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: #fff; font: 700 15px var(--display); padding: 10px 18px; border-radius: 999px; z-index: 40; border: 3px solid var(--sun); max-width: calc(100% - 32px); text-align: center; }
 @media (prefers-reduced-motion: reduce) { .floater, .evmodal, .tip { animation-duration: .01s; } .pulse { animation: none; outline: 3px solid var(--sun); } .bar > div { transition: none; } }
 </style>
 
@@ -328,6 +388,12 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
     </div>
   </header>
 
+  <div class="panel tutbar" id="tutBar" hidden>
+    <div class="tutnum" id="tutNum"></div>
+    <p id="tutTxt"></p>
+    <div class="tutbtns"><button class="linkbtn" id="tutSkip" type="button" data-t="tut_skip"></button><button class="btn primary" id="tutNext" type="button" data-t="tut_next"></button></div>
+  </div>
+
   <div class="main">
     <div class="col">
       <div class="panel room" id="room">
@@ -339,15 +405,6 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
         <div class="ico" id="jobIco"></div>
         <div><b id="jobH"></b><p class="why" id="jobP"></p><div class="bar" id="jobBarWrap" hidden><div id="jobBar"></div></div></div>
         <button class="jbtn ghost" id="jobBtn" type="button"></button>
-      </div>
-      <div class="panel fmt" id="fmtPanel">
-        <div class="label" data-t="fmt_h"></div>
-        <div class="fmt-row">
-          <button class="fbtn" type="button" id="fmt-short" data-t="fmt_short"></button>
-          <button class="fbtn" type="button" id="fmt-video" data-t="fmt_video"></button>
-          <button class="fbtn" type="button" id="fmt-long" data-t="fmt_long"></button>
-        </div>
-        <small id="fmtDesc"></small>
       </div>
       <div class="stages">
         <div class="panel stage" data-stage="rec">
@@ -379,10 +436,10 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
         </div>
         <div class="goal"><div class="bar"><div id="goalBar"></div></div><small id="goalTxt"></small></div>
         <div class="minis">
-          <div class="mini money"><span data-t="money"></span><b id="money">$0</b></div>
-          <div class="mini"><span data-t="trust"></span><b id="trust">70%</b></div>
-          <div class="mini"><span data-t="quality"></span><b id="quality">×1</b></div>
-          <div class="mini"><span data-t="videos"></span><b id="videos">0</b></div>
+          <div class="mini money"><span data-t="money"></span><b id="money">$0</b><small data-t="mini_money"></small></div>
+          <div class="mini" id="trustMini"><span data-t="trust"></span><b id="trust">70%</b><small data-t="mini_trust"></small></div>
+          <div class="mini"><span data-t="quality"></span><b id="quality">×1</b><small data-t="mini_quality"></small></div>
+          <div class="mini"><span data-t="videos"></span><b id="videos">0</b><small data-t="mini_videos"></small></div>
         </div>
       </div>
       <div class="panel shop">
@@ -429,23 +486,97 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 </div>
 
 <div class="overlay" id="menuBox" hidden>
+  <div class="panel modal menu">
+    <h2 data-t="pause_h"></h2>
+    <button class="mbtn primary" id="pResume" type="button" data-t="pause_resume"></button>
+    <button class="mbtn" id="pSave" type="button" data-t="pause_save"></button>
+    <button class="mbtn" id="pSaves" type="button" data-t="mm_load"></button>
+    <button class="mbtn" id="pSettings" type="button" data-t="mm_settings"></button>
+    <button class="mbtn" id="pHowto" type="button" data-t="mm_howto"></button>
+    <button class="mbtn" id="pExit" type="button" data-t="pause_exit"></button>
+  </div>
+</div>
+
+<div class="title-screen" id="mainMenu" hidden>
+  <div class="title-card">
+    <div class="title-logo" id="titleLogo"><i aria-hidden="true"></i><span data-t="title"></span></div>
+    <p class="title-sub" data-t="mm_sub"></p>
+    <div class="title-btns">
+      <button class="mbtn primary" id="mmContinue" type="button"></button>
+      <button class="mbtn" id="mmNew" type="button" data-t="mm_new"></button>
+      <button class="mbtn" id="mmLoad" type="button" data-t="mm_load"></button>
+      <button class="mbtn" id="mmSettings" type="button" data-t="mm_settings"></button>
+      <button class="mbtn" id="mmHowto" type="button" data-t="mm_howto"></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="savesBox" hidden>
+  <div class="panel modal wide">
+    <h2 id="savesH" data-t="mm_load"></h2>
+    <p class="note" data-t="autosave_note"></p>
+    <div class="slots" id="slots"></div>
+    <div id="importWrap" class="importwrap" hidden>
+      <p class="note" data-t="import_p"></p>
+      <textarea id="importIn" rows="3" spellcheck="false"></textarea>
+      <div class="row" id="importSlots"></div>
+    </div>
+    <div class="row"><button class="btn" id="savesBack" type="button" data-t="back"></button><button class="btn" id="importBtn" type="button" data-t="import_btn"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmBox" hidden>
   <div class="panel modal">
-    <h2 data-t="menu"></h2>
-    <div>
-      <div class="menu-row"><span data-t="sound"></span><div class="seg"><button type="button" id="mSfxOn" data-t="on"></button><button type="button" id="mSfxOff" data-t="off"></button></div></div>
-      <div class="menu-row"><span data-t="music"></span><div class="seg"><button type="button" id="mMusOn" data-t="on"></button><button type="button" id="mMusOff" data-t="off"></button></div></div>
-      <div class="menu-row"><span data-t="lang"></span><div class="seg"><button type="button" id="mRu">RU</button><button type="button" id="mEn">EN</button></div></div>
-    </div>
-    <button class="linkbtn" id="mHowto" type="button" data-t="howto"></button>
-    <button class="linkbtn danger" id="mRestart" type="button" data-t="restart"></button>
-    <div id="mConfirm" hidden>
-      <p><b data-t="reset_q"></b> <span data-t="reset_p"></span></p>
-      <div class="row" style="margin-top:8px">
-        <button class="btn" id="mNo" type="button" data-t="no"></button>
-        <button class="btn primary" id="mYes" type="button" data-t="yes_reset"></button>
-      </div>
-    </div>
-    <div class="row"><button class="btn" id="mClose" type="button" data-t="close"></button></div>
+    <p id="confirmTxt" style="color:var(--ink);font-weight:700"></p>
+    <div class="row"><button class="btn" id="confirmNo" type="button" data-t="back"></button><button class="btn primary" id="confirmYes" type="button" data-t="yes"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="codeBox" hidden>
+  <div class="panel modal wide">
+    <h2 data-t="code_h"></h2>
+    <p data-t="code_p"></p>
+    <textarea id="codeOut" rows="4" readonly spellcheck="false"></textarea>
+    <div class="row"><button class="btn" id="codeBack" type="button" data-t="back"></button><button class="btn primary" id="codeCopy" type="button" data-t="copy"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="settingsBox" hidden>
+  <div class="panel modal">
+    <h2 data-t="set_h"></h2>
+    <label class="slider"><span data-t="set_sfx"></span><input type="range" id="volSfx" min="0" max="100" step="5"><b id="volSfxV"></b></label>
+    <label class="slider"><span data-t="set_music"></span><input type="range" id="volMusic" min="0" max="100" step="5"><b id="volMusicV"></b></label>
+    <div class="menu-row"><span data-t="set_lang"></span><div class="seg"><button type="button" id="mRu">Русский</button><button type="button" id="mEn">English</button></div></div>
+    <button class="linkbtn" id="setTut" type="button" data-t="set_tut"></button>
+    <div class="row"><button class="btn" id="settingsBack" type="button" data-t="back"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="howtoBox" hidden>
+  <div class="panel modal wide">
+    <h2 data-t="howto_h"></h2>
+    <div class="howto" id="howtoList"></div>
+    <div class="row"><button class="btn" id="howtoBack" type="button" data-t="back"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="devGate" hidden>
+  <div class="panel modal devgate">
+    <div class="stop" aria-hidden="true">!</div>
+    <h2 data-t="dev_gate_h"></h2>
+    <p data-t="dev_gate_p"></p>
+    <input class="namein" id="devPass" type="password" autocomplete="off">
+    <p id="devWrong" class="wrong" hidden></p>
+    <div class="row"><button class="btn" id="devGateBack" type="button" data-t="back"></button><button class="btn primary" id="devGo" type="button" data-t="dev_enter"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="devBox" hidden>
+  <div class="panel modal wide devpanel">
+    <h2 data-t="dev_h"></h2>
+    <p class="note" data-t="dev_note"></p>
+    <div class="devgrid" id="devGrid"></div>
+    <div class="row"><button class="btn" id="devLock" type="button" data-t="dev_lock"></button><button class="btn primary" id="devClose" type="button" data-t="close"></button></div>
   </div>
 </div>
 
@@ -488,14 +619,11 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
   </div>
 </div>
 
-<div class="tip" id="tip" hidden>
-  <div id="tipTxt"></div>
-  <div class="row"><button class="skip" id="tipSkip" type="button" data-t="tut_skip"></button><button id="tipOk" type="button" data-t="tut_ok"></button></div>
-</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="texts.js"></script>
 <script src="titles.js"></script>
+<script src="sha.js"></script>
 <script src="logic.js"></script>
 <script src="audio.js"></script>
 <script src="icons.js"></script>

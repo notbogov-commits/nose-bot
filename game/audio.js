@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var ctx = null, master = null, sfxBus = null, musicBus = null;
-  var sfxOn = true, musicOn = true;
+  var sfxOn = true, musicOn = true, sfxVol = 0.8, musicVol = 0.5;
   var musicTimer = null, nextNoteTime = 0, step = 0;
 
   function ensure() {
@@ -11,8 +11,9 @@
     if (!AC) return false;
     try { ctx = new AC(); } catch (e) { return false; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
-    sfxBus = ctx.createGain(); sfxBus.gain.value = sfxOn ? 0.5 : 0; sfxBus.connect(master);
-    musicBus = ctx.createGain(); musicBus.gain.value = musicOn ? 0.16 : 0; musicBus.connect(master);
+    sfxBus = ctx.createGain(); sfxBus.connect(master);
+    musicBus = ctx.createGain(); musicBus.connect(master);
+    applyGain();
     return true;
   }
 
@@ -80,14 +81,22 @@
     musicTimer = setInterval(scheduleMusic, 80);
   }
 
+  function applyGain() {
+    if (!ctx) return;
+    sfxBus.gain.value = sfxOn ? 0.65 * sfxVol : 0;
+    musicBus.gain.value = musicOn ? 0.32 * musicVol : 0;
+  }
+
   window.GameAudio = {
     // Вызывать из обработчика клика: браузер разрешает звук только после действия игрока
     unlock: function () { if (ensure() && musicOn) startMusic(); },
     play: function (name) { try { if (SFX[name]) SFX[name](); } catch (e) {} },
-    setSfx: function (on) { sfxOn = on; if (sfxBus) sfxBus.gain.value = on ? 0.5 : 0; },
+    setSfx: function (on) { sfxOn = on; applyGain(); },
+    setSfxVolume: function (v) { sfxVol = Math.max(0, Math.min(1, v)); applyGain(); },
+    setMusicVolume: function (v) { musicVol = Math.max(0, Math.min(1, v)); applyGain(); },
     setMusic: function (on) {
       musicOn = on;
-      if (musicBus) musicBus.gain.value = on ? 0.16 : 0;
+      applyGain();
       if (on && ctx) startMusic();
     },
     get sfx() { return sfxOn; },

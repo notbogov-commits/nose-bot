@@ -664,14 +664,23 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="vendor/three.min.js"></script>
-<script src="texts.js"></script>
-<script src="titles.js"></script>
-<script src="sha.js"></script>
-<script src="logic.js"></script>
-<script src="audio.js"></script>
-<script src="icons.js"></script>
-<script src="banners.js"></script>
-<script src="room.js"></script>
-<script src="room3d.js"></script>
-<script src="game.js"></script>
+<div id="errBox" hidden style="position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#ffd3cf;color:#1f2338;border:3px solid #1f2338;border-radius:12px;padding:10px 14px;font:700 13px system-ui,sans-serif;overflow-wrap:anywhere"></div>
+<script>
+// Если что-то сломалось, показать ошибку на экране — её можно прислать разработчику
+window.addEventListener('error', function (e) {
+  var box = document.getElementById('errBox'); if (!box) return;
+  box.hidden = false;
+  box.textContent = 'Ошибка в игре: ' + (e.message || e) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '') + '. Обновите страницу (Ctrl+F5). Если не помогло — пришлите скриншот этой плашки.';
+});
+</script>
+<script src="vendor/three.min.js?v=8"></script>
+<script src="texts.js?v=8"></script>
+<script src="titles.js?v=8"></script>
+<script src="sha.js?v=8"></script>
+<script src="logic.js?v=8"></script>
+<script src="audio.js?v=8"></script>
+<script src="icons.js?v=8"></script>
+<script src="banners.js?v=8"></script>
+<script src="room.js?v=8"></script>
+<script src="room3d.js?v=8"></script>
+<script src="game.js?v=8"></script>

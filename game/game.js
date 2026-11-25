@@ -830,6 +830,7 @@ function renderSpeed() {
   $('speedLock').hidden = unlocked;
 }
 L.SPEEDS.forEach(function (v) {
+  if (!$('spd-' + v)) return;
   $('spd-' + v).addEventListener('click', function () {
     if (L.setSpeed(S, v)) { A.play('ui'); renderSpeed(); save(); }
     else toast(t('speed_locked', { n: fmtFull(L.SPEED_AT) }));

@@ -1,0 +1,744 @@
+<title>ЮТУБЕРЫ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Мультяшный минимализм: плоские пастельные формы с толстым тёмным контуром.
+   Слева комната ютубера, справа цифры и магазин. Одна тема (игровой вид), цвета заданы явно. */
+:root {
+  --wall: #cfe3f2;
+  --bg: #e7eff6;
+  --card: #ffffff;
+  --ink: #1f2338;
+  --ink-soft: #5b6180;
+  --line: #1f2338;
+  --rec: #ff5d4f;
+  --mint: #2fbf94;
+  --sun: #ffc23d;
+  --grape: #7c6cf2;
+  --muted: #dfe6ee;
+  --display: "Rubik", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --r: 14px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 15px; line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 28px;
+  display: grid; gap: 14px;
+}
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.logo { font-family: var(--display); font-weight: 800; font-size: 28px; letter-spacing: .5px; display: flex; align-items: center; gap: 10px; margin: 0; }
+.logo i { display: inline-grid; place-items: center; width: 34px; height: 34px; background: var(--sun); border: 3px solid var(--line); border-radius: 50%; }
+.logo i::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--rec); border: 2.5px solid var(--line); }
+.hdr-btns { display: flex; gap: 8px; }
+.chip {
+  font: 700 13px var(--body); color: var(--ink); background: var(--card);
+  border: 2.5px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer;
+  box-shadow: 0 3px 0 var(--line);
+}
+.chip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 14px; min-width: 0; }
+
+.panel { background: var(--card); border: 3px solid var(--line); border-radius: var(--r); box-shadow: 0 5px 0 var(--line); }
+
+/* Комната */
+.room { position: relative; overflow: hidden; aspect-ratio: 16 / 8; max-width: 100%; background: var(--wall); }
+.room canvas { width: 100%; height: 100%; display: block; }
+.floaters { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.floater {
+  position: absolute; font: 800 15px var(--display); color: var(--ink); white-space: nowrap;
+  background: #fff; border: 2.5px solid var(--line); border-radius: 999px; padding: 2px 10px;
+  animation: floatUp 1.8s ease-out forwards;
+}
+.floater.viral { background: var(--sun); }
+@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -70px); } }
+
+/* Этапы */
+.stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 520px) { .stages { grid-template-columns: minmax(0, 1fr); } }
+.stage { padding: 12px; display: grid; gap: 8px; }
+.stage h3 { margin: 0; font: 700 16px var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.stage h3 small { font: 700 12px var(--body); color: var(--ink-soft); }
+.bar { height: 16px; background: var(--muted); border: 2.5px solid var(--line); border-radius: 999px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--c, var(--mint)); transition: width .08s linear; }
+.stage[data-stage="rec"] { --c: var(--rec); }
+.stage[data-stage="edit"] { --c: var(--grape); }
+.stage[data-stage="up"] { --c: var(--mint); }
+.act {
+  font: 800 17px var(--display); color: #fff; background: var(--c); cursor: pointer;
+  border: 3px solid var(--line); border-radius: 12px; padding: 12px 8px; box-shadow: 0 4px 0 var(--line);
+  user-select: none; touch-action: manipulation;
+}
+.act:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+.act:disabled { background: var(--muted); color: var(--ink-soft); cursor: not-allowed; }
+.stage .meta { font-size: 12.5px; color: var(--ink-soft); min-height: 1.4em; }
+.key { font: 700 11px var(--body); border: 2px solid currentColor; border-radius: 5px; padding: 0 4px; margin-left: 4px; opacity: .7; }
+
+/* Лента событий */
+.feed { padding: 10px 14px; display: grid; gap: 4px; min-height: 120px; }
+.feed h4, .shop h4 { margin: 0 0 2px; font: 700 13px var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); }
+.feed p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.feed p b { font-family: var(--display); }
+.feed p.viral b { background: var(--sun); padding: 0 5px; border-radius: 5px; }
+.feed p.ms b { color: var(--grape); }
+
+/* Цифры */
+.stats { padding: 14px; display: grid; gap: 10px; }
+.subs-label { font: 700 12px var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); }
+.subs { font: 800 44px/1 var(--display); font-variant-numeric: tabular-nums; }
+.goal { display: grid; gap: 4px; }
+.goal .bar { height: 14px; }
+.goal .bar > div { background: var(--rec); }
+.goal small { color: var(--ink-soft); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 420px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--bg); border: 2px solid var(--line); border-radius: 10px; padding: 6px 8px; min-width: 0; }
+.stat span { display: block; font-size: 11.5px; color: var(--ink-soft); font-weight: 700; }
+.stat b { font: 700 18px var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat.money b { color: #138a68; }
+
+/* Магазин */
+.shop { padding: 12px 14px 14px; display: grid; gap: 10px; }
+.tabs { display: flex; gap: 6px; }
+.tab { flex: 1; font: 700 14px var(--display); padding: 8px; border: 2.5px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--ink); color: #fff; }
+.items { display: grid; gap: 8px; }
+.item {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 8px; border: 2.5px solid var(--line); border-radius: 12px; background: var(--card);
+}
+.item .ico { width: 44px; height: 44px; border-radius: 10px; border: 2.5px solid var(--line); display: grid; place-items: center; background: var(--bg); }
+.item .ico svg { width: 28px; height: 28px; }
+.item .txt { min-width: 0; }
+.item .txt b { font: 700 15px var(--display); display: block; }
+.item .txt > span { font-size: 12.5px; color: var(--ink-soft); display: block; }
+.buy {
+  font: 800 14px var(--display); padding: 8px 12px; border: 2.5px solid var(--line); border-radius: 10px;
+  background: var(--sun); color: var(--ink); cursor: pointer; box-shadow: 0 3px 0 var(--line); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.buy:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+.buy:disabled { background: var(--muted); color: var(--ink-soft); cursor: not-allowed; }
+.item.locked { opacity: .55; }
+.item.locked .txt b { letter-spacing: .2em; }
+.lvl { display: inline-block; font: 700 11px var(--body); background: var(--ink); color: #fff; border-radius: 6px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
+
+/* Окна */
+.overlay { position: fixed; inset: 0; background: rgba(31, 35, 56, .55); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.modal { max-width: 420px; width: 100%; padding: 22px; display: grid; gap: 12px; text-align: center; }
+.modal h2 { margin: 0; font: 800 30px var(--display); text-wrap: balance; }
+.modal p { margin: 0; color: var(--ink-soft); }
+.modal .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: #fff; font: 700 15px var(--display); padding: 10px 18px; border-radius: 999px; z-index: 30;
+  border: 3px solid var(--sun); max-width: calc(100% - 32px); text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .floater { animation-duration: .01s; } .bar > div { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1 class="logo"><i aria-hidden="true"></i><span>ЮТУБЕРЫ</span></h1>
+    <div class="hdr-btns">
+      <button class="chip" id="langBtn" type="button">EN</button>
+      <button class="chip" id="resetBtn" type="button" data-t="reset">Заново</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="col">
+      <div class="panel room" id="room">
+        <canvas id="cv" aria-label="Комната ютубера"></canvas>
+        <div class="floaters" id="floaters"></div>
+      </div>
+      <div class="stages">
+        <div class="panel stage" data-stage="rec">
+          <h3><span data-t="st_rec">Съёмка</span><small id="cnt-rec"></small></h3>
+          <div class="bar"><div id="bar-rec"></div></div>
+          <button class="act" id="btn-rec" type="button"><span data-t="do_rec">Снимать</span><span class="key">1</span></button>
+          <div class="meta" id="meta-rec"></div>
+        </div>
+        <div class="panel stage" data-stage="edit">
+          <h3><span data-t="st_edit">Монтаж</span><small id="cnt-edit"></small></h3>
+          <div class="bar"><div id="bar-edit"></div></div>
+          <button class="act" id="btn-edit" type="button"><span data-t="do_edit">Монтировать</span><span class="key">2</span></button>
+          <div class="meta" id="meta-edit"></div>
+        </div>
+        <div class="panel stage" data-stage="up">
+          <h3><span data-t="st_up">Загрузка</span><small id="cnt-up"></small></h3>
+          <div class="bar"><div id="bar-up"></div></div>
+          <button class="act" id="btn-up" type="button"><span data-t="do_up">Загружать</span><span class="key">3</span></button>
+          <div class="meta" id="meta-up"></div>
+        </div>
+      </div>
+      <div class="panel feed" id="feed"><h4 data-t="feed">Лента канала</h4></div>
+    </div>
+
+    <div class="col">
+      <div class="panel stats">
+        <div>
+          <div class="subs-label" data-t="subs">Подписчики</div>
+          <div class="subs" id="subs">0</div>
+        </div>
+        <div class="goal">
+          <div class="bar"><div id="goalBar"></div></div>
+          <small id="goalTxt"></small>
+        </div>
+        <div class="grid4">
+          <div class="stat money"><span data-t="money">Деньги</span><b id="money">$0</b></div>
+          <div class="stat"><span data-t="views">Просмотры</span><b id="views">0</b></div>
+          <div class="stat"><span data-t="videos">Видео</span><b id="videos">0</b></div>
+          <div class="stat"><span data-t="quality">Качество</span><b id="quality">×1</b></div>
+        </div>
+      </div>
+      <div class="panel shop">
+        <div class="tabs" role="tablist">
+          <button class="tab" id="tab-gear" role="tab" type="button" aria-selected="true" data-t="tab_gear">Техника</button>
+          <button class="tab" id="tab-team" role="tab" type="button" aria-selected="false" data-t="tab_team">Команда</button>
+        </div>
+        <div class="items" id="items"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmBox" hidden>
+  <div class="panel modal">
+    <h2 data-t="reset_q">Начать заново?</h2>
+    <p data-t="reset_p">Канал, деньги и вся техника пропадут.</p>
+    <div class="row">
+      <button class="chip" id="resetNo" type="button" data-t="no">Отмена</button>
+      <button class="chip" id="resetYes" type="button" data-t="yes_reset" style="background:var(--rec);color:#fff">Да, заново</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="winBox" hidden>
+  <div class="panel modal">
+    <h2 data-t="win_h">Миллион подписчиков!</h2>
+    <p id="winTxt"></p>
+    <div class="row">
+      <button class="chip" id="winGo" type="button" data-t="win_go">Играть дальше</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="logic.js"></script>
+<script>
+(function () {
+'use strict';
+var L = window.Logic;
+var SAVE_KEY = 'youtubers_save_v1';
+
+/* ---------- Тексты ---------- */
+var T = {
+  ru: {
+    reset: 'Заново', st_rec: 'Съёмка', st_edit: 'Монтаж', st_up: 'Загрузка',
+    do_rec: 'Снимать', do_edit: 'Монтировать', do_up: 'Загружать',
+    feed: 'Лента канала', subs: 'Подписчики', money: 'Деньги', views: 'Просмотры', videos: 'Видео', quality: 'Качество',
+    tab_gear: 'Техника', tab_team: 'Команда',
+    reset_q: 'Начать заново?', reset_p: 'Канал, деньги и вся техника пропадут.', no: 'Отмена', yes_reset: 'Да, заново',
+    win_h: 'Миллион подписчиков!', win_go: 'Играть дальше',
+    win_txt: 'Ты прошёл путь от телефона до студии за {t} и выпустил {v} видео.',
+    goal: '{p}% до 1 000 000', raw: 'отснято: {n}', edited: 'готово: {n}', queue: 'в очереди: {n}',
+    need_raw: 'Сначала что-нибудь сними', need_edit: 'Сначала смонтируй видео',
+    per_click: '+{n} за клик', auto: '{who}: {n}/с',
+    who_op: 'оператор', who_ed: 'монтажёр', who_mg: 'менеджер',
+    published: 'Вышло видео «{title}»: {v} просмотров, +{s} подписчиков',
+    viral: 'ЗАЛЕТЕЛО! «{title}»: {v} просмотров, +{s} подписчиков',
+    first: 'Нажимай «Снимать», чтобы снять первое видео.',
+    ms: 'Награда канала: {n} подписчиков!',
+    bought: 'Куплено: {n}', hired: 'В команде: {n}',
+    owned: 'есть', max: 'макс.', lvl: 'ур. {n}', locked: '???',
+    unit_views: 'просм.',
+    cam: 'Камера', pc: 'Компьютер', net: 'Интернет',
+    phone: 'Телефон', webcam: 'Веб-камера', dslr: 'Зеркалка', cinema: 'Кинокамера', studio: 'Студийная камера',
+    laptop: 'Старый ноутбук', gamingpc: 'Игровой ПК', workstation: 'Монтажная станция', renderfarm: 'Рендер-ферма',
+    adsl: 'Медленный интернет', fiber: 'Оптоволокно', gigabit: 'Гигабит', satlink: 'Спутниковый канал',
+    mic: 'Микрофон', light: 'Свет',
+    d_cam: 'Съёмка ×{p}, качество ×{q}', d_pc: 'Монтаж ×{p}, качество ×{q}', d_net: 'Загрузка ×{p}',
+    d_mic: '+15% к качеству за уровень', d_light: '+15% к качеству за уровень',
+    op: 'Оператор', ed: 'Монтажёр', mg: 'Менеджер',
+    d_op: 'Снимает сам', d_ed: 'Монтирует сам', d_mg: 'Загружает сам',
+    titles: [
+      'Я прожил 24 часа в шкафу', 'Пробую самую острую лапшу', 'Сделал робота из картона',
+      'Распаковка коробки с секретом', 'Повторяю рецепт бабушки', 'Купил всё в магазине по 1 доллару',
+      'Строю дом из подушек', 'Неделю говорю только «да»', 'Мой кот оценивает мои видео',
+      'Проверяю лайфхаки из интернета', 'Собрал ПК вслепую', 'Пробую еду из автомата',
+      'Ночь в пустом торговом центре', 'Учусь жонглировать за 7 дней', 'Обзор моего холодильника',
+      'Сделал самый большой бургер', 'Мама смотрит мои старые видео', 'Прыгнул в бассейн с желе'
+    ]
+  },
+  en: {
+    reset: 'Restart', st_rec: 'Filming', st_edit: 'Editing', st_up: 'Uploading',
+    do_rec: 'Film', do_edit: 'Edit', do_up: 'Upload',
+    feed: 'Channel feed', subs: 'Subscribers', money: 'Money', views: 'Views', videos: 'Videos', quality: 'Quality',
+    tab_gear: 'Gear', tab_team: 'Team',
+    reset_q: 'Start over?', reset_p: 'Your channel, money and gear will be gone.', no: 'Cancel', yes_reset: 'Yes, restart',
+    win_h: 'One million subscribers!', win_go: 'Keep playing',
+    win_txt: 'You went from a phone to a studio in {t} and posted {v} videos.',
+    goal: '{p}% to 1,000,000', raw: 'filmed: {n}', edited: 'ready: {n}', queue: 'queued: {n}',
+    need_raw: 'Film something first', need_edit: 'Edit a video first',
+    per_click: '+{n} per click', auto: '{who}: {n}/s',
+    who_op: 'camera op', who_ed: 'editor', who_mg: 'manager',
+    published: 'New video "{title}": {v} views, +{s} subs',
+    viral: 'IT WENT VIRAL! "{title}": {v} views, +{s} subs',
+    first: 'Press "Film" to shoot your first video.',
+    ms: 'Channel award: {n} subscribers!',
+    bought: 'Bought: {n}', hired: 'Joined the team: {n}',
+    owned: 'owned', max: 'max', lvl: 'lv {n}', locked: '???',
+    unit_views: 'views',
+    cam: 'Camera', pc: 'Computer', net: 'Internet',
+    phone: 'Phone', webcam: 'Webcam', dslr: 'DSLR', cinema: 'Cinema camera', studio: 'Studio camera',
+    laptop: 'Old laptop', gamingpc: 'Gaming PC', workstation: 'Editing workstation', renderfarm: 'Render farm',
+    adsl: 'Slow internet', fiber: 'Fiber', gigabit: 'Gigabit', satlink: 'Satellite uplink',
+    mic: 'Microphone', light: 'Lighting',
+    d_cam: 'Filming ×{p}, quality ×{q}', d_pc: 'Editing ×{p}, quality ×{q}', d_net: 'Uploading ×{p}',
+    d_mic: '+15% quality per level', d_light: '+15% quality per level',
+    op: 'Camera operator', ed: 'Video editor', mg: 'Channel manager',
+    d_op: 'Films on their own', d_ed: 'Edits on their own', d_mg: 'Uploads on their own',
+    titles: [
+      'I spent 24 hours in a closet', 'Trying the spiciest noodles', 'I built a cardboard robot',
+      'Unboxing a mystery box', 'Cooking my grandma\'s recipe', 'Buying everything at the dollar store',
+      'Building a pillow fort house', 'Saying yes to everything for a week', 'My cat rates my videos',
+      'Testing internet life hacks', 'Building a PC blindfolded', 'Eating only vending machine food',
+      'A night in an empty mall', 'Learning to juggle in 7 days', 'Fridge tour',
+      'Making the biggest burger', 'Mom watches my old videos', 'Jumping into a jelly pool'
+    ]
+  }
+};
+var lang = 'ru';
+function t(key, vars) {
+  var s = (T[lang][key] != null ? T[lang][key] : key);
+  if (vars) for (var k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+function fmt(n) {
+  n = Math.floor(n);
+  if (n < 1000) return String(n);
+  var u = [['B', 1e9], ['M', 1e6], ['K', 1e3]];
+  for (var i = 0; i < u.length; i++) if (n >= u[i][1]) {
+    var v = n / u[i][1];
+    return (v >= 100 ? Math.floor(v) : (Math.floor(v * 10) / 10)).toString().replace('.', lang === 'ru' ? ',' : '.') + u[i][0];
+  }
+  return String(n);
+}
+function fmtMoney(n) { return '$' + fmt(n); }
+function fmtFull(n) { return Math.floor(n).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US'); }
+function fmtTime(sec) {
+  var m = Math.floor(sec / 60), h = Math.floor(m / 60);
+  if (lang === 'ru') return h ? h + ' ч ' + (m % 60) + ' мин' : m + ' мин';
+  return h ? h + 'h ' + (m % 60) + 'm' : m + ' min';
+}
+
+/* ---------- Состояние и сохранение ---------- */
+var S;
+function load() {
+  var hot = window.claude && window.claude.hot && window.claude.hot.data;
+  if (hot && hot.state) return L.restore(hot.state);
+  try { var raw = localStorage.getItem(SAVE_KEY); if (raw) return L.restore(JSON.parse(raw)); } catch (e) {}
+  return L.newState();
+}
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); localStorage.setItem(SAVE_KEY + '_lang', lang); } catch (e) {} }
+try { lang = localStorage.getItem(SAVE_KEY + '_lang') || 'ru'; } catch (e) {}
+S = load();
+if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
+  window.claude.hot.snapshot(function () { return { state: S }; });
+}
+
+/* ---------- Элементы ---------- */
+var $ = function (id) { return document.getElementById(id); };
+var STAGES = ['rec', 'edit', 'up'];
+var STAFF_OF = { rec: 'op', edit: 'ed', up: 'mg' };
+var feedLines = [];
+var lastClick = { rec: -9, edit: -9, up: -9 };
+var now = 0;
+var shopTab = 'gear';
+
+function applyTexts() {
+  document.documentElement.lang = lang;
+  var els = document.querySelectorAll('[data-t]');
+  for (var i = 0; i < els.length; i++) els[i].textContent = t(els[i].getAttribute('data-t'));
+  $('langBtn').textContent = lang === 'ru' ? 'EN' : 'RU';
+  document.querySelector('.logo span').textContent = lang === 'ru' ? 'ЮТУБЕРЫ' : 'YOUTUBERS';
+  renderFeed(); buildShop();
+}
+
+function addFeed(html, cls) {
+  feedLines.unshift({ html: html, cls: cls || '' });
+  if (feedLines.length > 6) feedLines.pop();
+  renderFeed();
+}
+function renderFeed() {
+  var box = $('feed');
+  box.innerHTML = '<h4>' + t('feed') + '</h4>';
+  if (!feedLines.length) { var p = document.createElement('p'); p.textContent = t('first'); box.appendChild(p); }
+  feedLines.forEach(function (l) { var p = document.createElement('p'); p.className = l.cls; p.innerHTML = l.html; box.appendChild(p); });
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+var toastTimer;
+function toast(msg) {
+  var el = $('toast'); el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 2600);
+}
+
+function floater(text, viral) {
+  var el = document.createElement('div');
+  el.className = 'floater' + (viral ? ' viral' : '');
+  el.textContent = text;
+  el.style.left = (30 + Math.random() * 40) + '%';
+  el.style.top = (25 + Math.random() * 30) + '%';
+  $('floaters').appendChild(el);
+  setTimeout(function () { el.remove(); }, 1900);
+}
+
+/* ---------- События логики ---------- */
+function handle(events) {
+  events.forEach(function (e) {
+    if (e.type === 'published') {
+      var titles = T[lang].titles;
+      var title = titles[Math.floor(Math.random() * titles.length)];
+      var vars = { title: esc(title), v: '<b>' + fmt(e.views) + '</b>', s: fmt(e.subs) };
+      addFeed(t(e.viral ? 'viral' : 'published', vars), e.viral ? 'viral' : '');
+      floater('+' + fmt(e.views) + ' ' + t('unit_views'), e.viral);
+    } else if (e.type === 'milestone') {
+      addFeed('<b>' + t('ms', { n: fmtFull(e.value) }) + '</b>', 'ms');
+      toast(t('ms', { n: fmtFull(e.value) }));
+    } else if (e.type === 'won') {
+      $('winTxt').textContent = t('win_txt', { t: fmtTime(S.wonAt), v: fmtFull(S.videos) });
+      $('winBox').hidden = false;
+      save();
+    }
+  });
+}
+
+/* ---------- Действия ---------- */
+function work(stage) {
+  if (!L.canWork(S, stage)) return;
+  lastClick[stage] = now;
+  handle(L.addWork(S, stage, L.power(S, stage), Math.random));
+  renderStages();
+}
+STAGES.forEach(function (st) {
+  $('btn-' + st).addEventListener('click', function () { work(st); });
+});
+document.addEventListener('keydown', function (e) {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  var map = { '1': 'rec', '2': 'edit', '3': 'up' };
+  if (map[e.key]) { work(map[e.key]); var b = $('btn-' + map[e.key]); b.style.transform = 'translateY(3px)'; setTimeout(function () { b.style.transform = ''; }, 80); }
+});
+
+$('langBtn').addEventListener('click', function () { lang = lang === 'ru' ? 'en' : 'ru'; applyTexts(); renderAll(); save(); });
+$('resetBtn').addEventListener('click', function () { $('confirmBox').hidden = false; });
+$('resetNo').addEventListener('click', function () { $('confirmBox').hidden = true; });
+$('resetYes').addEventListener('click', function () {
+  S = L.newState(); feedLines = []; $('confirmBox').hidden = true; save(); renderFeed(); buildShop(); renderAll();
+});
+$('winGo').addEventListener('click', function () { $('winBox').hidden = true; });
+['gear', 'team'].forEach(function (k) {
+  $('tab-' + k).addEventListener('click', function () {
+    shopTab = k;
+    $('tab-gear').setAttribute('aria-selected', k === 'gear');
+    $('tab-team').setAttribute('aria-selected', k === 'team');
+    buildShop();
+  });
+});
+
+/* ---------- Магазин ---------- */
+var ICONS = {
+  cam: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5" stroke-linejoin="round"><rect x="3" y="8" width="16" height="13" rx="3" fill="#ff5d4f"/><path d="M19 12l6-3v11l-6-3z" fill="#fff"/></svg>',
+  pc: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5" stroke-linejoin="round"><rect x="3" y="4" width="22" height="15" rx="2" fill="#7c6cf2"/><path d="M10 24h8M14 19v5"/></svg>',
+  net: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5" stroke-linecap="round"><path d="M4 11a14 14 0 0 1 20 0M8 15a8.5 8.5 0 0 1 12 0M12 19a3 3 0 0 1 4 0"/><circle cx="14" cy="23" r="1.6" fill="#1f2338"/></svg>',
+  mic: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5" stroke-linecap="round"><rect x="10" y="3" width="8" height="14" rx="4" fill="#ffc23d"/><path d="M6 13a8 8 0 0 0 16 0M14 21v4"/></svg>',
+  light: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5"><circle cx="14" cy="12" r="8" fill="#fff6d6"/><circle cx="14" cy="12" r="4"/><path d="M14 20v6" stroke-linecap="round"/></svg>',
+  op: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5"><circle cx="14" cy="9" r="5" fill="#ffd9b8"/><path d="M5 25c1-6 5-8 9-8s8 2 9 8z" fill="#ff5d4f"/></svg>',
+  ed: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5"><circle cx="14" cy="9" r="5" fill="#c99b74"/><path d="M5 25c1-6 5-8 9-8s8 2 9 8z" fill="#7c6cf2"/></svg>',
+  mg: '<svg viewBox="0 0 28 28" fill="none" stroke="#1f2338" stroke-width="2.5"><circle cx="14" cy="9" r="5" fill="#f1c8a0"/><path d="M5 25c1-6 5-8 9-8s8 2 9 8z" fill="#2fbf94"/></svg>'
+};
+
+// Каждая позиция магазина: что показать и что сделать при покупке
+function shopItems() {
+  var out = [];
+  if (shopTab === 'gear') {
+    ['cam', 'pc', 'net'].forEach(function (kind) {
+      var cur = L.TIERS[kind][S[kind]], nxt = L.nextTier(S, kind);
+      var show = nxt || cur;
+      var desc = t('d_' + kind, { p: show.power, q: show.q != null ? show.q : '' });
+      out.push({
+        id: kind, icon: kind,
+        name: t(show.id), sub: t(kind) + ' · ' + desc,
+        cost: nxt ? nxt.cost : null, done: !nxt,
+        seen: !nxt || S.money >= nxt.cost * 0.35 || S[kind] > 0 || nxt.cost <= 60,
+        buy: function () { if (L.buyTier(S, kind)) toast(t('bought', { n: t(L.TIERS[kind][S[kind]].id) })); }
+      });
+    });
+    ['mic', 'light'].forEach(function (kind) {
+      var d = L.LEVELED[kind], done = S[kind] >= d.max, c = L.levelCost(kind, S[kind]);
+      out.push({
+        id: kind, icon: kind, name: t(kind), lvl: S[kind], sub: t('d_' + kind),
+        cost: done ? null : c, done: done,
+        seen: S[kind] > 0 || S.money >= c * 0.35,
+        buy: function () { if (L.buyLevel(S, kind)) toast(t('bought', { n: t(kind) + ' ' + t('lvl', { n: S[kind] }) })); }
+      });
+    });
+  } else {
+    ['op', 'ed', 'mg'].forEach(function (kind) {
+      var c = L.staffCost(kind, S.staff[kind]);
+      out.push({
+        id: kind, icon: kind, name: t(kind), lvl: S.staff[kind], sub: t('d_' + kind),
+        cost: c, done: false,
+        seen: S.staff[kind] > 0 || S.money >= c * 0.35,
+        buy: function () { if (L.hire(S, kind)) toast(t('hired', { n: t(kind) })); }
+      });
+    });
+  }
+  return out;
+}
+
+var itemEls = {};
+function buildShop() {
+  var box = $('items'); box.innerHTML = ''; itemEls = {};
+  shopItems().forEach(function (it) {
+    var row = document.createElement('div'); row.className = 'item';
+    row.innerHTML = '<div class="ico">' + ICONS[it.icon] + '</div><div class="txt"><b></b><span></span></div>' +
+      '<button class="buy" type="button" id="buy-' + it.id + '"></button>';
+    row.querySelector('.buy').addEventListener('click', function () {
+      var cur = shopItems().filter(function (x) { return x.id === it.id; })[0];
+      if (cur && cur.cost != null && S.money >= cur.cost) { cur.buy(); save(); renderShop(); renderAll(); }
+    });
+    box.appendChild(row); itemEls[it.id] = row;
+  });
+  renderShop();
+}
+function renderShop() {
+  shopItems().forEach(function (it) {
+    var row = itemEls[it.id]; if (!row) return;
+    var b = row.querySelector('.txt b'), sp = row.querySelector('.txt span'), btn = row.querySelector('.buy');
+    row.classList.toggle('locked', !it.seen);
+    if (!it.seen) { b.textContent = t('locked'); sp.textContent = t(it.id === 'cam' || it.id === 'pc' || it.id === 'net' ? it.id : it.id); }
+    else {
+      b.innerHTML = esc(it.name) + (it.lvl ? '<span class="lvl">' + t('lvl', { n: it.lvl }) + '</span>' : '');
+      sp.textContent = it.sub;
+    }
+    if (it.done) { btn.textContent = (it.id === 'mic' || it.id === 'light') ? t('max') : t('owned'); btn.disabled = true; }
+    else { btn.textContent = fmtMoney(it.cost); btn.disabled = S.money < it.cost || !it.seen; }
+  });
+}
+
+/* ---------- Отрисовка панелей ---------- */
+function renderStages() {
+  STAGES.forEach(function (st) {
+    $('bar-' + st).style.width = (S.work[st] / L.WORK[st] * 100) + '%';
+    var ok = L.canWork(S, st);
+    $('btn-' + st).disabled = !ok;
+    var meta = [];
+    if (!ok) meta.push(t(st === 'edit' ? 'need_raw' : 'need_edit'));
+    else meta.push(t('per_click', { n: L.power(S, st) }));
+    var sk = STAFF_OF[st];
+    if (S.staff[sk] > 0) meta.push(t('auto', { who: t('who_' + sk), n: (Math.round(L.staffRate(S, sk) * 10) / 10).toString() }));
+    $('meta-' + st).textContent = meta.join(' · ');
+  });
+  $('cnt-rec').textContent = '';
+  $('cnt-edit').textContent = S.raw ? t('queue', { n: S.raw }) : '';
+  $('cnt-up').textContent = S.edited ? t('queue', { n: S.edited }) : '';
+}
+function renderAll() {
+  $('subs').textContent = fmtFull(S.subs);
+  var p = Math.min(100, S.subs / L.GOAL_SUBS * 100);
+  $('goalBar').style.width = p + '%';
+  $('goalTxt').textContent = t('goal', { p: p < 10 ? p.toFixed(2).replace('.', lang === 'ru' ? ',' : '.') : Math.floor(p) });
+  $('money').textContent = fmtMoney(S.money);
+  $('views').textContent = fmt(S.views);
+  $('videos').textContent = fmt(S.videos);
+  $('quality').textContent = '×' + (Math.round(L.quality(S) * 10) / 10).toString().replace('.', lang === 'ru' ? ',' : '.');
+  renderStages();
+  renderShop();
+}
+
+/* ---------- Комната (холст) ---------- */
+var cv = $('cv'), ctx = cv.getContext('2d');
+var W = 640, H = 320;
+function resize() {
+  var r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+var INK = '#1f2338';
+function shape(fill, lw) {
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = lw || 3; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.stroke();
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function circ(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); }
+
+function person(x, y, skin, shirt, hair, opt) {
+  opt = opt || {};
+  var bob = opt.bob || 0, arm = opt.arm || 0, s = opt.scale || 1;
+  ctx.save(); ctx.translate(x, y + bob); ctx.scale(s, s);
+  // тело
+  rr(-22, -10, 44, 58, 18); shape(shirt);
+  // руки
+  ctx.save(); ctx.translate(-20, 2); ctx.rotate(-0.3 - arm); rr(-6, 0, 12, 34, 6); shape(shirt); ctx.restore();
+  ctx.save(); ctx.translate(20, 2); ctx.rotate(0.3 + arm); rr(-6, 0, 12, 34, 6); shape(shirt); ctx.restore();
+  // голова
+  circ(0, -34, 24); shape(skin);
+  // волосы
+  ctx.beginPath(); ctx.arc(0, -38, 24, Math.PI * 1.05, Math.PI * 1.95); ctx.lineTo(16, -44); ctx.quadraticCurveTo(0, -50, -18, -42); ctx.closePath(); shape(hair);
+  // лицо
+  ctx.fillStyle = INK;
+  var blink = opt.blink ? 0.15 : 1;
+  ctx.beginPath(); ctx.ellipse(-8, -32, 2.6, 3.4 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8, -32, 2.6, 3.4 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.lineWidth = 2.5; ctx.strokeStyle = INK; ctx.lineCap = 'round';
+  if (opt.talk) { ctx.ellipse(0, -21, 4, 3 + Math.abs(Math.sin(now * 14)) * 2.5, 0, 0, Math.PI * 2); ctx.fillStyle = '#c4453a'; ctx.fill(); ctx.stroke(); }
+  else { ctx.arc(0, -25, 6, 0.2, Math.PI - 0.2); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawCamera(x, y, tier) {
+  // штатив
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 22, y + 90); ctx.moveTo(x, y); ctx.lineTo(x + 22, y + 90); ctx.moveTo(x, y); ctx.lineTo(x, y + 92); ctx.stroke();
+  if (tier === 0) { // телефон
+    rr(x - 12, y - 30, 24, 40, 5); shape('#2c3150'); rr(x - 8, y - 25, 16, 28, 3); shape('#8fd3ff', 2);
+  } else if (tier === 1) { // веб-камера
+    circ(x, y - 12, 15); shape('#f4f6fb'); circ(x, y - 12, 7); shape('#2c3150');
+  } else if (tier === 2) { // зеркалка
+    rr(x - 26, y - 30, 44, 30, 6); shape('#2c3150'); rr(x - 14, y - 38, 16, 9, 3); shape('#2c3150');
+    circ(x + 18, y - 15, 11); shape('#4a5178'); circ(x + 18, y - 15, 5); shape('#8fd3ff', 2);
+  } else { // кино / студия
+    var big = tier === 4 ? 1.25 : 1;
+    ctx.save(); ctx.translate(x, y); ctx.scale(big, big);
+    rr(-34, -38, 56, 36, 6); shape('#2c3150'); rr(20, -32, 22, 24, 4); shape('#4a5178');
+    circ(-22, -48, 12); shape('#4a5178'); circ(2, -48, 12); shape('#4a5178');
+    rr(-30, -6, 14, 6, 2); shape(tier === 4 ? '#ffc23d' : '#ff5d4f', 2);
+    ctx.restore();
+  }
+}
+
+function drawPlaque(x, y, value, i) {
+  var colors = ['#e5a46b', '#c9d2de', '#ffc23d', '#8fd3ff', '#ff5d4f'];
+  rr(x, y, 46, 56, 6); shape(colors[i]);
+  rr(x + 9, y + 9, 28, 22, 6); shape('#ffffff', 2.5);
+  ctx.beginPath();
+  for (var k = 0; k < 10; k++) { var a = -Math.PI / 2 + k * Math.PI / 5, rad = k % 2 ? 4 : 9; ctx.lineTo(x + 23 + Math.cos(a) * rad, y + 20 + Math.sin(a) * rad); }
+  ctx.closePath(); ctx.fillStyle = INK; ctx.fill();
+  ctx.fillStyle = INK; ctx.font = '700 11px Rubik, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(value >= 1e6 ? '1M' : value >= 1000 ? (value / 1000) + 'K' : value, x + 23, y + 47);
+}
+
+function drawRoom() {
+  var lvl = S.cam + S.pc; // насколько "богатая" комната
+  // стена
+  ctx.fillStyle = lvl >= 5 ? '#d7d2f5' : lvl >= 3 ? '#cfe8e0' : '#cfe3f2';
+  ctx.fillRect(0, 0, W, H);
+  // плинтус и пол
+  ctx.fillStyle = lvl >= 5 ? '#6b5ea8' : '#b98b62'; ctx.fillRect(0, 248, W, H - 248);
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 248); ctx.lineTo(W, 248); ctx.stroke();
+  if (lvl < 5) { ctx.strokeStyle = 'rgba(31,35,56,.18)'; ctx.lineWidth = 2; for (var fx = 40; fx < W; fx += 80) { ctx.beginPath(); ctx.moveTo(fx, 250); ctx.lineTo(fx - 30, H); ctx.stroke(); } }
+  // окно
+  rr(36, 40, 110, 90, 8); shape('#9fd8ff');
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(91, 40); ctx.lineTo(91, 130); ctx.moveTo(36, 85); ctx.lineTo(146, 85); ctx.stroke();
+  circ(124, 62, 10); ctx.fillStyle = '#fff6d6'; ctx.fill();
+  // награды на стене
+  for (var i = 0; i < S.milestones.length && i < 5; i++) drawPlaque(176 + i * 54, 38, L.MILESTONES[i], i);
+  // свет (кольцевая лампа)
+  if (S.light > 0) {
+    var gl = ctx.createRadialGradient(250, 160, 10, 250, 160, 160);
+    gl.addColorStop(0, 'rgba(255,246,214,' + (0.25 + S.light * 0.06) + ')'); gl.addColorStop(1, 'rgba(255,246,214,0)');
+    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+    ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.beginPath(); ctx.moveTo(330, 150); ctx.lineTo(330, 248); ctx.stroke();
+    circ(330, 128, 22); ctx.fillStyle = '#fff6d6'; ctx.fill(); ctx.lineWidth = 9; ctx.strokeStyle = '#fffbe8'; ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = INK; circ(330, 128, 27); ctx.stroke(); circ(330, 128, 17); ctx.stroke();
+  }
+  // стол и компьютер
+  rr(410, 182, 210, 16, 4); shape('#e9c79f');
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.beginPath(); ctx.moveTo(424, 198); ctx.lineTo(424, 248); ctx.moveTo(606, 198); ctx.lineTo(606, 248); ctx.stroke();
+  var screens = [1, 1, 2, 3][S.pc];
+  for (var sIdx = 0; sIdx < screens; sIdx++) {
+    var sx = 450 + sIdx * 56 - (screens - 1) * 8, glow = (S.pc >= 1) ? '#7c6cf2' : '#8fd3ff';
+    if (S.pc === 0) { rr(470, 140, 70, 42, 4); shape('#c9d2de'); rr(476, 146, 58, 30, 2); shape(glow, 2); rr(462, 178, 86, 6, 3); shape('#c9d2de', 2); break; }
+    rr(sx, 120, 52, 40, 4); shape('#2c3150'); rr(sx + 5, 125, 42, 30, 2); shape(glow, 2);
+    // дорожка монтажа
+    ctx.fillStyle = (now * 2 + sIdx) % 2 < 1 ? '#ffc23d' : '#ff5d4f'; ctx.fillRect(sx + 9, 146, 14 + ((now * 20 + sIdx * 7) % 20), 4);
+    ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.beginPath(); ctx.moveTo(sx + 26, 160); ctx.lineTo(sx + 26, 182); ctx.stroke();
+  }
+  if (S.pc >= 1) { rr(578, 132 - S.pc * 6, 30, 50 + S.pc * 6, 4); shape('#2c3150'); circ(593, 150, 4); ctx.fillStyle = Math.sin(now * 6) > 0 ? '#2fbf94' : '#1b6e55'; ctx.fill(); }
+  // роутер
+  rr(430, 168, 34, 14, 3); shape('#f4f6fb', 2.5);
+  for (var nl = 0; nl <= S.net; nl++) { circ(437 + nl * 7, 175, 2.2); ctx.fillStyle = Math.sin(now * (5 + nl * 3)) > 0 ? '#2fbf94' : '#c9d2de'; ctx.fill(); }
+
+  // герой
+  var recording = now - lastClick.rec < 0.5 || S.staff.op > 0;
+  var blink = (now % 4) < 0.12;
+  person(250, 200, '#ffd9b8', '#ff5d4f', '#3b2a22', {
+    bob: Math.sin(now * (recording ? 9 : 2)) * (recording ? 3 : 1.5),
+    arm: recording ? Math.sin(now * 9) * 0.35 + 0.2 : 0, talk: recording, blink: blink
+  });
+  // микрофон
+  if (S.mic > 0) {
+    ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.beginPath(); ctx.moveTo(296, 248); ctx.lineTo(296, 186); ctx.lineTo(282, 176); ctx.stroke();
+    rr(268, 160, 18, 26, 9); shape(S.mic >= 4 ? '#ffc23d' : '#c9d2de');
+  }
+  // камера смотрит на героя
+  drawCamera(150, 158, S.cam);
+  if (recording) {
+    rr(120, 8, 64, 24, 12); shape('#ffffff', 2.5);
+    circ(135, 20, 6); ctx.fillStyle = Math.sin(now * 8) > 0 ? '#ff5d4f' : '#ffb3ab'; ctx.fill();
+    ctx.fillStyle = INK; ctx.font = '700 13px Rubik, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('REC', 146, 25);
+  }
+  // команда
+  if (S.staff.op > 0) person(88, 214, '#ffd9b8', '#ff5d4f', '#1f2338', { scale: 0.75, bob: Math.sin(now * 3 + 1) * 1.5 });
+  if (S.staff.ed > 0) person(520, 214, '#c99b74', '#7c6cf2', '#1f2338', { scale: 0.75, bob: Math.sin(now * 3 + 2) * 1.5, arm: Math.sin(now * 12) * 0.12 });
+  if (S.staff.mg > 0) person(380, 222, '#f1c8a0', '#2fbf94', '#8a4b2d', { scale: 0.7, bob: Math.sin(now * 3 + 3) * 1.5, talk: Math.sin(now * 0.7) > 0.4 });
+  // счётчик команды
+  var team = S.staff.op + S.staff.ed + S.staff.mg;
+  if (team > 3) {
+    rr(W - 92, 10, 80, 26, 13); shape('#ffffff', 2.5);
+    ctx.fillStyle = INK; ctx.font = '700 13px Rubik, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText((lang === 'ru' ? 'команда: ' : 'team: ') + team, W - 52, 28);
+  }
+}
+
+/* ---------- Главный цикл ---------- */
+var last = performance.now(), saveTimer = 0, shopTimer = 0;
+function frame(ts) {
+  var dt = Math.min(0.25, (ts - last) / 1000); last = ts; now += dt;
+  handle(L.tick(S, dt, Math.random));
+  shopTimer += dt; saveTimer += dt;
+  if (shopTimer > 0.15) { shopTimer = 0; renderAll(); }
+  if (saveTimer > 5) { saveTimer = 0; save(); }
+  drawRoom();
+  requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+window.addEventListener('beforeunload', save);
+
+function start() {
+  resize(); applyTexts(); renderAll();
+  if (S.won) $('winBox').hidden = true;
+  requestAnimationFrame(function (ts) { last = ts; frame(ts); });
+}
+if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(start); else start();
+})();
+</script>

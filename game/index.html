@@ -356,9 +356,22 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
 .cm.ign { opacity: .6; }
 .cm.ign .row { display: none; }
 
+/* Самочувствие */
+.needs { padding: 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.need { display: grid; gap: 5px; }
+.nh { display: flex; justify-content: space-between; font: 700 13px var(--display); }
+.nh b { font-variant-numeric: tabular-nums; }
+#energyBar { background: var(--grape); } #foodBar { background: var(--mint); }
+.need .bar.low > div { background: var(--rec) !important; }
+.nbtn { font: 800 14px var(--display); padding: 8px 10px; border: 2.5px solid var(--line); border-radius: 10px; background: var(--card); cursor: pointer; box-shadow: 0 3px 0 var(--line); }
+.nbtn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+.nbtn:disabled { background: var(--muted); color: var(--ink-soft); cursor: not-allowed; }
+.needs .note { grid-column: 1 / -1; margin: 0; }
+.rbadge.act { background: #e4dfff; }
+
 /* Скорость времени */
 .speed { display: flex; align-items: center; border: 2.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); box-shadow: 0 3px 0 var(--line); position: relative; }
-.spd { font: 800 12px var(--display); padding: 0 10px; height: 35px; border: 0; border-right: 2px solid var(--muted); background: var(--card); cursor: pointer; letter-spacing: -2px; }
+.spd { font: 800 12px var(--display); padding: 0 10px; height: 35px; border: 0; border-right: 2px solid var(--muted); background: var(--card); cursor: pointer; white-space: nowrap; }
 .spd:last-of-type { border-right: 0; }
 .spd[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .spd:disabled { color: #b6bccb; cursor: not-allowed; }
@@ -401,7 +414,7 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
     <h1 class="logo"><i aria-hidden="true"></i><span id="logoTxt">ЮТУБЕРЫ</span></h1>
     <nav class="chans" id="chans"></nav>
     <div class="right-top">
-      <div class="speed" id="speedBox"><button type="button" id="spd-1" class="spd">▶</button><button type="button" id="spd-3" class="spd">▶▶</button><button type="button" id="spd-10" class="spd">▶▶▶</button><span id="speedLock" class="lockico" aria-hidden="true"><svg viewBox="0 0 16 16" width="15" height="15"><rect x="2.5" y="7" width="11" height="8" rx="2" fill="#ffc23d" stroke="#1f2338" stroke-width="1.6"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="#1f2338" stroke-width="1.6"/></svg></span></div>
+      <div class="speed" id="speedBox"><button type="button" id="spd-1" class="spd">▶</button><button type="button" id="spd-2" class="spd">▶▶ ×2</button><span id="speedLock" class="lockico" aria-hidden="true"><svg viewBox="0 0 16 16" width="15" height="15"><rect x="2.5" y="7" width="11" height="8" rx="2" fill="#ffc23d" stroke="#1f2338" stroke-width="1.6"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="#1f2338" stroke-width="1.6"/></svg></span></div>
       <div class="clock" id="clock"></div>
       <button class="ibtn" id="sfxBtn" type="button" aria-pressed="true"></button>
       <button class="ibtn" id="musicBtn" type="button" aria-pressed="true"></button>
@@ -423,7 +436,13 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
         <div class="fx" id="fx"></div>
         <div class="rbadge rec" id="recBadge" hidden><i></i>REC</div>
         <div class="rbadge job" id="jobBadge" hidden></div>
+        <div class="rbadge act" id="actBadge" hidden></div>
         <div class="roomhint" id="roomHint" data-t="room_hint" hidden></div>
+      </div>
+      <div class="panel needs" id="needs">
+        <div class="need"><div class="nh"><span data-t="energy"></span><b id="energyV"></b></div><div class="bar"><div id="energyBar"></div></div><button class="nbtn" id="sleepBtn" type="button"></button></div>
+        <div class="need"><div class="nh"><span data-t="food"></span><b id="foodV"></b></div><div class="bar"><div id="foodBar"></div></div><button class="nbtn" id="eatBtn" type="button"></button></div>
+        <p class="note" id="needsNote"></p>
       </div>
       <div class="panel job" id="job">
         <div class="ico" id="jobIco"></div>

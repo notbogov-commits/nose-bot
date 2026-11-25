@@ -233,7 +233,9 @@
     G.couch = group(8.4, 0, 4.0); M.couch = mat('#7c6cf2');
     box(0.9, 0.42, 2.6, M.couch, 0, 0.21, 0, G.couch); box(0.3, 0.55, 2.6, M.couch, 0.3, 0.7, 0, G.couch); box(0.9, 0.62, 0.2, M.couch, 0, 0.31, -1.3, G.couch); box(0.9, 0.62, 0.2, M.couch, 0, 0.31, 1.3, G.couch);
     G.plants = [];
-    [[8.5, 1.3], [0.45, 0.45]].forEach(function (p) { var g = group(p[0], 0, p[1]); cyl(0.2, 0.16, 0.38, mat('#e5a46b'), 0, 0.19, 0, g); for (var l = 0; l < 5; l++) { var leaf = sphere(0.14, mat('#2fbf94'), Math.cos(l * 1.3) * 0.12, 0.5 + (l % 2) * 0.12, Math.sin(l * 1.3) * 0.12, g); leaf.scale.set(0.7, 1.6, 0.7); } G.plants.push(g); });
+    G.fridge = group(0.45, 0, 0.5); box(0.7, 1.5, 0.66, mat('#f4f6fb'), 0, 0.75, 0, G.fridge); box(0.02, 0.5, 0.04, mat('#c9d2de'), 0.36, 1.05, 0.2, G.fridge); box(0.71, 0.02, 0.67, mat('#c9d2de'), 0, 0.95, 0, G.fridge);
+    G.magnet = box(0.02, 0.12, 0.12, mat('#ff5d4f'), 0.36, 1.25, -0.1, G.fridge);
+    [[8.5, 1.3]].forEach(function (p) { var g = group(p[0], 0, p[1]); cyl(0.2, 0.16, 0.38, mat('#e5a46b'), 0, 0.19, 0, g); for (var l = 0; l < 5; l++) { var leaf = sphere(0.14, mat('#2fbf94'), Math.cos(l * 1.3) * 0.12, 0.5 + (l % 2) * 0.12, Math.sin(l * 1.3) * 0.12, g); leaf.scale.set(0.7, 1.6, 0.7); } G.plants.push(g); });
 
     // свет для съёмки: пары стоек по бокам ютубера
     G.lights = [];
@@ -345,18 +347,25 @@
     scene.background = new THREE.Color('#e7eff6').lerp(new THREE.Color('#1c2140'), dark * 0.85);
     var sunAng = ((hour - 6) / 12) * Math.PI;
     sun.position.set(5.75 + Math.cos(sunAng) * 4, 2 + Math.sin(Math.max(0.15, sunAng)) * 5, -6);
-    sun.intensity = 1.35 * day; sun.color.copy(lerpColor('#ffb27a', '#fff3dc', Math.min(1, day * 1.5)));
-    hemi.intensity = 0.18 + 0.5 * day; hemi.color.copy(lerpColor('#6f7fc9', '#ffffff', day));
+    sun.intensity = 1.05 * day; sun.color.copy(lerpColor('#ffb27a', '#fff3dc', Math.min(1, day * 1.5)));
+    hemi.intensity = 0.18 + 0.42 * day; hemi.color.copy(lerpColor('#6f7fc9', '#ffffff', day));
     moon.intensity = 0.35 * dark;
     G.outside.children.forEach(function (m) { if (m.userData.litable) m.material = dark > 0.5 ? M.bwinLit : M.bwin; });
     M.building.color.set(dark > 0.5 ? '#4a5070' : '#d9d4c7');
 
     // кто где: съёмка — на ковре, монтаж/публикация — за столом, на работе — дома никого
-    var atDesk = !opt.atJob && opt.selfDesk, onSet = !opt.atJob && !atDesk;
+    var sleeping = opt.activity === 'sleep', eating = opt.activity === 'eat';
+    var atDesk = !opt.atJob && !opt.activity && opt.selfDesk, onSet = !opt.atJob && !opt.activity && !atDesk;
     G.host.visible = !opt.atJob; setHat(G.host, S.channels[0].theme);
-    if (onSet) { G.host.position.set(4.3, 0, 2.3); G.host.rotation.y = Math.PI * 0.28; }
+    G.host.rotation.set(0, 0, 0);
+    if (sleeping) {
+      var bx = S.home <= 1 ? 0.75 : 8.4, bz = S.home <= 1 ? 5.4 : 4.0;   // кровать или диван
+      G.host.position.set(bx, S.home <= 1 ? 0.62 : 0.5, bz + 0.35); G.host.rotation.x = -Math.PI / 2;
+    } else if (eating) { G.host.position.set(1.15, 0, 0.75); G.host.rotation.y = -Math.PI * 0.6; }
+    else if (onSet) { G.host.position.set(4.3, 0, 2.3); G.host.rotation.y = Math.PI * 0.28; }
     else if (atDesk) { G.host.position.set(1.62, 0.08, 2.4); G.host.rotation.y = -Math.PI / 2; }
-    animatePerson(G.host, { talk: onSet && opt.recording, wave: onSet && opt.recording, bob: onSet && opt.recording, seated: atDesk, typing: atDesk, seed: 1 });
+    animatePerson(G.host, { talk: onSet && opt.recording, wave: (onSet && opt.recording) || eating, bob: onSet && opt.recording, seated: atDesk, typing: atDesk, seed: 1 });
+    if (sleeping) { G.host.userData.eyes.forEach(function (e) { e.scale.y = 0.15; }); G.host.userData.body.position.y = Math.sin(now * 1.5) * 0.02; }
     G.chair.rotation.y = 0;
 
     // техника на канале
@@ -396,21 +405,21 @@
       });
     }
     // настольная лампа и свет экранов: вечером и ночью
-    deskLamp.intensity = dark > 0.2 && !opt.atJob ? 0.9 + dark * 0.6 : 0;
+    deskLamp.intensity = dark > 0.2 && !opt.atJob && opt.activity !== 'sleep' ? 0.9 + dark * 0.6 : 0.08 * dark;
     G.lampHead.material.emissive = new THREE.Color(deskLamp.intensity > 0 ? '#ffb347' : '#000000'); G.lampHead.material.emissiveIntensity = 0.8;
     monitorLight.intensity = (opt.editing || opt.uploading) && !opt.atJob ? 0.5 + dark : 0.1 * dark;
 
     // камера сцены: изометрический ракурс, можно чуть повернуть мышью
     yaw += (yawTarget - yaw) * 0.12;
-    var cx = RX / 2 + 0.3, cz = RZ / 2, r = 14, ang = Math.PI / 4 + yaw;
-    camera.position.set(cx + Math.sin(ang) * r, 9.5, cz + Math.cos(ang) * r); camera.lookAt(cx, 0.9, cz);
+    var cx = RX / 2 - 0.3, cz = RZ / 2 - 0.3, r = 8.5, ang = Math.PI / 4 + yaw;   // вид сверху под крутым углом
+    camera.position.set(cx + Math.sin(ang) * r, 15, cz + Math.cos(ang) * r); camera.lookAt(cx, 0.6, cz);
     renderer.render(scene, camera);
   }
 
   function resize(w, h) {
     if (!renderer) return;
     renderer.setSize(w, h, false);
-    var aspect = w / h, view = 4.5;
+    var aspect = w / h, view = 5.1;
     camera.left = -view * aspect; camera.right = view * aspect; camera.top = view; camera.bottom = -view; camera.updateProjectionMatrix();
   }
 
@@ -422,7 +431,7 @@
     if (!renderer.getContext()) { ok = false; return false; }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     build();
     // поворот комнаты мышью или пальцем (немного, чтобы не потерять ракурс)

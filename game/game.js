@@ -204,6 +204,9 @@ function handle(events) {
     else if (e.type === 'second_ready') { toast(t('second_ready')); addFeed('<b>' + esc(t('second_ready')) + '</b>', 'ms'); renderChans(); A.play('good'); }
     else if (e.type === 'event') { renderEventModal(true); A.play(e.event.kind === 'monetized' ? 'milestone' : 'card'); }
     else if (e.type === 'auto_event') { if (e.result) addFeed(esc(t('auto_event', { r: resultText(e.result, e.event) }))); }
+    else if (e.type === 'fainted') { toast(t('fainted')); addFeed(esc(t('fainted')), 'bad'); A.play('bad'); }
+    else if (e.type === 'woke') { var wk = t(e.reason === 'job' ? 'woke_job' : 'woke_rested'); toast(wk); addFeed(esc(wk)); A.play('step'); }
+    else if (e.type === 'ate') { addFeed(esc(t('ate'))); A.play('good'); }
     else if (e.type === 'speed_unlocked') { toast(t('speed_unlocked')); addFeed('<b>' + esc(t('speed_unlocked')) + '</b>', 'ms'); A.play('good'); renderSpeed(); }
     else if (e.type === 'shift_start') { addFeed(esc(t('shift_start'))); A.play('ui'); }
     else if (e.type === 'shift_done') { toast(t('job_done', { pay: fmtMoney(e.pay) })); addFeed(esc(t('job_done', { pay: fmtMoney(e.pay) }))); floater('+' + fmtMoney(e.pay)); A.play('buy'); }
@@ -518,6 +521,24 @@ function renderJob() {
     $('jobBarWrap').hidden = true;
   }
 }
+function renderNeeds() {
+  var e = Math.round(S.energy), f = Math.round(S.food), act = S.activity;
+  $('energyV').textContent = e + '%'; $('foodV').textContent = f + '%';
+  $('energyBar').style.width = e + '%'; $('foodBar').style.width = f + '%';
+  $('energyBar').parentNode.classList.toggle('low', e < 30); $('foodBar').parentNode.classList.toggle('low', f < 30);
+  var sb = $('sleepBtn'), eb = $('eatBtn');
+  if (act && act.type === 'sleep') { sb.textContent = t('wake_btn'); sb.disabled = false; }
+  else { sb.textContent = t('sleep_btn'); sb.disabled = !L.canRest(S); }
+  eb.textContent = t('eat_btn', { c: fmtMoney(L.mealCost(S)) }); eb.disabled = !L.canRest(S) || S.money < L.mealCost(S) || S.food >= 98;
+  $('needsNote').textContent = act ? t('needs_busy') : (e < 30 || f < 30) ? t('needs_low') : t('needs_ok');
+  $('needsNote').style.color = (!act && (e < 30 || f < 30)) ? '#c4453a' : '';
+}
+$('sleepBtn').addEventListener('click', function () {
+  if (S.activity && S.activity.type === 'sleep') { L.wake(S); A.play('ui'); }
+  else if (L.sleep(S)) A.play('ui');
+  renderNeeds(); renderStages(); save();
+});
+$('eatBtn').addEventListener('click', function () { if (L.eat(S)) { A.play('buy'); renderNeeds(); renderAll(); save(); } });
 function renderStages() {
   if (!S.channels.length) return;
   var ch = C();
@@ -527,6 +548,7 @@ function renderStages() {
     var meta = [], sk = STAFF_OF[st];
     if (ch.banned) meta.push(t('ch_banned'));
     else if (S.job.active) meta.push(t('at_job'));
+    else if (S.activity) meta.push(t(S.activity.type === 'sleep' ? 'busy_sleep' : 'busy_eat'));
     else if (!L.hasGear(ch, st)) meta.push(t('no_gear_' + st));
     else if (!L.stageOpen(S, st)) meta.push(t(st === 'edit' ? 'need_raw' : 'need_edit'));
     else meta.push(t('per_click', { n: L.power(S, st) }));
@@ -559,7 +581,7 @@ function renderAll() {
   $('money').textContent = fmtMoney(S.money); $('trust').textContent = Math.round(C().trust) + '%';
   $('quality').textContent = '×' + dec(Math.round(L.quality(S) * 10) / 10); $('videos').textContent = fmt(ch.videos);
   var cb = $('cmBadge'); cb.hidden = !S.comments.length; cb.textContent = S.comments.length > 9 ? '9+' : S.comments.length;
-  updateChanSubs(); renderJob(); renderStages(); renderShop(); renderFx(); renderEventModal(false);
+  updateChanSubs(); renderJob(); renderNeeds(); renderStages(); renderShop(); renderFx(); renderEventModal(false);
 }
 
 /* ---------- Обучение: плашка над игрой, подсвечивает нужное место и ничего не закрывает ---------- */
@@ -579,7 +601,7 @@ function tutStep() {
     case 4: return { el: $('stats'), ok: true };
     case 5: return { el: $('monChip'), ok: true };
     case 6: return S.job.employed ? { el: $('job'), ok: true } : { done: true };
-    case 7: return { el: $('trustMini'), ok: true };
+    case 7: return { el: $('needs'), ok: true };
     case 8:
       if (S.replied > 0) return { done: true };
       if (!S.comments.length) return { wait: true };
@@ -738,7 +760,7 @@ $('volMusic').addEventListener('input', function () { settings.musicVol = +this.
 $('settingsBack').addEventListener('click', function () { hide('settingsBox'); });
 $('setTut').addEventListener('click', function () { S.tut = 1; ['settingsBox', 'menuBox'].forEach(hide); save(); renderTut(); });
 function openHowto() {
-  $('howtoList').innerHTML = T().howto.map(function (r) { return '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>'; }).join('');
+  $('howtoList').innerHTML = T().howto.concat([T().howto_needs, T().howto_speed]).map(function (r) { return '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>'; }).join('');
   show('howtoBox');
 }
 $('howtoBack').addEventListener('click', function () { hide('howtoBox'); });
@@ -830,7 +852,7 @@ var last = performance.now(), uiTimer = 0, saveTimer = 0, chTimer = 0;
 function frame(ts) {
   var dt = Math.min(0.25, (ts - last) / 1000); last = ts; now += dt;
   var running = slot && !paused();
-  if (running) { if ($('moveBox').hidden) handle(L.tick(S, dt * (S.speed || 1) * timeScale, Math.random)); else updateMove(); }
+  if (running) { if ($('moveBox').hidden) handle(L.tick(S, dt, Math.random, (S.speed || 1) * timeScale)); else updateMove(); }
   if (S.event && !$('evBox').hidden) updateEventButtons();
   uiTimer += dt; saveTimer += dt; chTimer += dt;
   if (uiTimer > 0.15 && slot) { uiTimer = 0; renderAll(); renderTut(); tickCommentTimers(); renderSpeed(); }
@@ -845,8 +867,11 @@ function frame(ts) {
     editing: !S.job.active && (selfEdit || (ch.staff.ed.n > 0 && ch.raw.length > 0)),
     uploading: !S.job.active && (selfUp || (ch.staff.mg.n > 0 && ch.edited.length > 0)),
     edOnline: ch.staff.ed.n > 0, upProgress: ch.work.up / L.workNeed(S, 'up'), sinceUpload: now - lastPublish,
-    atJob: S.job.active, jobLabel: settings.lang === 'ru' ? 'Ушёл на работу' : 'At work'
+    atJob: S.job.active, jobLabel: settings.lang === 'ru' ? 'Ушёл на работу' : 'At work',
+    activity: S.activity ? S.activity.type : null
   } : {};
+  if (opt.activity) { opt.recording = false; opt.selfDesk = false; }
+  $('actBadge').hidden = !opt.activity || opt.atJob; if (opt.activity) $('actBadge').textContent = t(opt.activity === 'sleep' ? 'sleeping' : 'eating') + (opt.activity === 'sleep' ? ' · Zzz' : '');
   $('recBadge').hidden = !opt.recording || opt.atJob;
   $('jobBadge').hidden = !opt.atJob; if (opt.atJob) $('jobBadge').textContent = t('at_job');
   if (use3d) window.Room3D.draw(S, L, now, opt);

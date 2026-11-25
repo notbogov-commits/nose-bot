@@ -8,7 +8,11 @@
   var SECOND_CHANNEL_AT = 50000;    // столько подписчиков на первом канале нужно для второго
   var MONETIZE_AT = 1000;           // с этого числа подписчиков канал начинает зарабатывать
   var SPEED_AT = 1000;              // с этого числа подписчиков открывается ускорение времени
-  var SPEEDS = [1, 3, 10];          // обычная, быстрая и очень быстрая скорость
+  var SPEEDS = [1, 2];              // обычная и ускоренная ×2 (ускоряет часы и команду, но не комментарии и события)
+  var ENERGY_DRAIN = 5.5, FOOD_DRAIN = 5;   // сколько энергии и сытости уходит за игровой час
+  var SLEEP_GAIN = 12.5;                     // сколько энергии возвращает час сна
+  var MEAL = 55, MEAL_HOURS = 0.5;           // сколько сытости даёт еда и сколько она занимает
+  var MEAL_COST = [5, 10, 20, 40];           // цена еды в каждом жилье
   var SUB_RATE = 0.004;             // подписчиков с одного просмотра
   var VIEW_BASE = 900;              // базовые просмотры нового видео (до множителей)
   var MAX_STRIKES = 3;              // на третьем страйке канал удаляют навсегда
@@ -100,7 +104,7 @@
 
   function newState() {
     return {
-      v: 6,
+      v: 7, rt: 0, energy: 90, food: 80, activity: null,
       money: 0, home: 0,
       channels: [], active: 0,
       videos: [], nextVid: 1,
@@ -153,7 +157,7 @@
       s.channels[slot] = ch;
     } else s.channels.push(ch);
     s.active = slot;
-    if (!s.nextEventAt) s.nextEventAt = s.played + 70;
+    if (!s.nextEventAt) s.nextEventAt = s.rt + 70;
     return true;
   }
 
@@ -166,10 +170,11 @@
     var ch = s.channels[i], q = HOMES[s.home].q;
     for (var k = 0; k < GEAR_IDS.length; k++) { var g = GEAR_IDS[k]; q *= GEAR[g][Math.max(0, ch.gear[g])].q; }
     if (broken(s, i)) q *= 0.7;
+    q *= 0.85 + 0.15 * needMul(s);
     return q;
   }
   function powerOf(ch, stage) { var g = ch.gear[NEEDED[stage]]; return g < 0 ? 0 : GEAR[NEEDED[stage]][g].power; }
-  function power(s, stage) { return powerOf(channel(s), stage); }
+  function power(s, stage) { return Math.max(1, Math.round(powerOf(channel(s), stage) * needMul(s))); }
   function workNeedOf(ch, stage) { return WORK[stage] * THEMES[ch.theme].work[stage]; }
   function workNeed(s, stage) { return s.channels.length ? workNeedOf(channel(s), stage) : WORK[stage]; }
   function hasGear(ch, stage) { return ch.gear[NEEDED[stage]] >= 0; }
@@ -181,7 +186,12 @@
     return true;
   }
   function stageOpen(s, stage) { return s.channels.length > 0 && stageOpenOf(channel(s), stage); }
-  function canWork(s, stage) { return !s.job.active && !s.event && stageOpen(s, stage); }
+  function canWork(s, stage) { return !s.job.active && !s.event && !s.activity && stageOpen(s, stage); }
+  // Усталость и голод замедляют работу и портят картинку
+  function needMul(s) {
+    var e = s.energy < 30 ? 0.5 + s.energy / 60 : 1, f = s.food < 30 ? 0.5 + s.food / 60 : 1;
+    return Math.min(e, f);
+  }
 
   function addWorkTo(s, i, stage, amount, rng, events) {
     var ch = s.channels[i], guard = 0;
@@ -251,7 +261,7 @@
     var wHate = 0.25 * th.hate * (1.4 - ch.trust / 100), wPos = 0.45 * (0.6 + ch.trust / 100), wQ = 0.3;
     var r = rng() * (wHate + wPos + wQ);
     var kind = r < wPos ? 'pos' : r < wPos + wQ ? 'q' : 'hate';
-    var c = { id: s.nextCid++, vid: v.id, ch: v.ch, kind: kind, pick: Math.floor(rng() * 1000), t: s.played };
+    var c = { id: s.nextCid++, vid: v.id, ch: v.ch, kind: kind, pick: Math.floor(rng() * 1000), t: s.rt };
     v.cm = (v.cm || 0) + 1;
     if (ch.staff.mg.n > 0 && ch.staff.mg.lvl >= MG_AUTO_COMMENTS) { replyEffect(s, c, 'pos'); return; }
     s.comments.push(c);
@@ -274,7 +284,7 @@
     if (s.channels[c.ch]) addTrust(s.channels[c.ch], -IGNORE_TRUST);
     if (events) events.push({ type: 'comment_ignored', comment: c });
   }
-  function commentLeft(s, c) { return COMMENT_HOURS * HOUR - (s.played - c.t); }
+  function commentLeft(s, c) { return COMMENT_HOURS * HOUR - (s.rt - c.t); }   // в реальных секундах, ускорение не влияет
   function replyComment(s, cid, tone) {
     for (var i = 0; i < s.comments.length; i++) if (s.comments[i].id === cid) return replyEffect(s, s.comments.splice(i, 1)[0], tone);
     return null;
@@ -294,6 +304,28 @@
 
   /* ---------- Работа ---------- */
   function quitJob(s) { if (!s.job.employed) return false; s.job.employed = false; s.job.active = false; return true; }
+
+  /* ---------- Сон и еда ---------- */
+  function mealCost(s) { return MEAL_COST[s.home]; }
+  function canRest(s) { return !s.job.active && !s.event && !s.activity && s.channels.length > 0; }
+  function sleep(s) { if (!canRest(s)) return false; s.activity = { type: 'sleep', start: s.played }; return true; }
+  function eat(s) {
+    if (!canRest(s) || s.money < mealCost(s) || s.food >= 98) return false;
+    s.money -= mealCost(s); s.activity = { type: 'eat', end: s.played + MEAL_HOURS * HOUR }; return true;
+  }
+  function wake(s) { if (s.activity && s.activity.type === 'sleep') { s.activity = null; return true; } return false; }
+  function needsTick(s, gdt, events) {
+    var hours = gdt / HOUR, a = s.activity;
+    if (a && a.type === 'sleep') {
+      s.energy = Math.min(100, s.energy + SLEEP_GAIN * hours); s.food = Math.max(0, s.food - FOOD_DRAIN * 0.5 * hours);
+      if (s.energy >= 100) { s.activity = null; events.push({ type: 'woke', reason: 'rested' }); }
+    } else {
+      s.energy = Math.max(0, s.energy - ENERGY_DRAIN * hours * (s.food <= 0 ? 2 : 1));
+      s.food = Math.max(0, s.food - FOOD_DRAIN * hours);
+      if (a && a.type === 'eat' && s.played >= a.end) { s.food = Math.min(100, s.food + MEAL); s.activity = null; events.push({ type: 'ate' }); }
+      if (s.energy <= 0 && !s.job.active) { s.activity = { type: 'sleep', start: s.played, fainted: true }; events.push({ type: 'fainted' }); }
+    }
+  }
 
   /* ---------- Скорость ---------- */
   function setSpeed(s, v) { if (SPEEDS.indexOf(v) < 0 || (v > 1 && !s.speedUnlocked)) return false; s.speed = v; return true; }
@@ -347,7 +379,7 @@
     var ev = s.event; if (!ev) return null;
     if (eventOptions(s, ev).indexOf(opt) < 0 || !canChoose(s, ev, opt)) return null;
     s.event = null;
-    if (ev.kind !== 'monetized' && ev.kind !== 'banned') s.nextEventAt = s.played + 40 + rng() * 40;
+    if (ev.kind !== 'monetized' && ev.kind !== 'banned') s.nextEventAt = s.rt + 40 + rng() * 40;
     var ch = s.channels[ev.ch], out = { kind: ev.kind, opt: opt, ch: ev.ch };
     if (!ch) return out;
     function boost(mult, src, extra) { s.effects.push({ type: 'boost', ch: ev.ch, mult: mult, src: src, viral: extra && extra.viral, subs: extra && extra.subs }); }
@@ -386,10 +418,13 @@
   }
 
   /* ---------- Такт игры (dt уже с учётом скорости) ---------- */
-  function tick(s, dt, rng) {
+  // rdt — реальные секунды; scale — ускорение (×2 у игрока, больше в меню разработчика)
+  function tick(s, rdt, rng, scale) {
     var events = [];
     if (!s.channels.length || s.event) return events;
-    s.played += dt;
+    var dt = rdt * (scale || s.speed || 1);
+    s.played += dt; s.rt += rdt;
+    needsTick(s, dt, events);
     s.channels.forEach(function (ch, i) {
       if (ch.banned) return;
       for (var k in STAFF) if (ch.staff[k].n > 0) addWorkTo(s, i, STAFF[k].stage, staffRateOf(ch, k) * dt, rng, events);
@@ -411,6 +446,7 @@
     }
     var c = clock(s);
     if (s.job.employed && !s.job.active && c.day !== s.job.lastDay && c.hour >= JOB_FROM && c.hour < JOB_TO) {
+      if (s.activity) { s.activity = null; events.push({ type: 'woke', reason: 'job' }); }
       s.job.active = true; s.job.lastDay = c.day;
       s.job.end = s.played + (JOB_TO - c.hour - c.minute / 60) * HOUR;
       events.push({ type: 'shift_start' });
@@ -419,7 +455,7 @@
       s.job.active = false; var pay = salary(s); s.money += pay; s.job.shifts++;
       events.push({ type: 'shift_done', pay: pay });
     }
-    if (!s.job.active && !channel(s).banned && totalVideos(s) >= 6 && s.played >= s.nextEventAt) {
+    if (!s.job.active && !s.activity && !channel(s).banned && totalVideos(s) >= 6 && s.rt >= s.nextEventAt) {
       var ev = makeEvent(s, rng), auto = autoChoice(s, ev);
       s.event = ev;
       if (auto) events.push({ type: 'auto_event', event: ev, result: resolveEvent(s, auto, rng) });
@@ -454,7 +490,7 @@
 
   function restore(data) {
     var s = newState();
-    if (!data || typeof data !== 'object' || data.v !== 6) return s;
+    if (!data || typeof data !== 'object' || data.v !== 7) return s;
     for (var k in s) {
       if (!(k in data)) continue;
       if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k])) {
@@ -479,7 +515,7 @@
     trustMul: trustMul, addTrust: addTrust, strikes: strikes, broken: broken,
     videoViews: videoViews, videoEarned: videoEarned, likeRate: likeRate, findVideo: findVideo,
     addWork: addWork, tick: tick, staffRate: staffRate, staffRateOf: staffRateOf, hireCost: hireCost, trainCost: trainCost, hire: hire, train: train, mgAuto: mgAuto,
-    quitJob: quitJob, setSpeed: setSpeed, commentLeft: commentLeft, replyComment: replyComment, makeEvent: makeEvent,
+    quitJob: quitJob, setSpeed: setSpeed, sleep: sleep, eat: eat, wake: wake, mealCost: mealCost, canRest: canRest, needMul: needMul, commentLeft: commentLeft, replyComment: replyComment, makeEvent: makeEvent,
     eventOptions: eventOptions, canChoose: canChoose, resolveEvent: resolveEvent,
     gearCost: gearCost, gearBlocked: gearBlocked, gearNeedsHome: gearNeedsHome, buyGear: buyGear, homeCost: homeCost, moveHome: moveHome
   };

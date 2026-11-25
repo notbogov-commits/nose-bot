@@ -3,7 +3,7 @@
 'use strict';
 var BANNERS = window.BANNERS, TITLES = window.TITLES, L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
 var SLOT_KEY = 'youtubers_slot_', META_KEY = 'youtubers_meta', SET_KEY = 'youtubers_settings', SLOTS = 3;
-var DEV_HASH = '36b07348d7b7e38b41a3fb2e9e9dfd0a87b18f2682a981c03440f6ba30ab0e21'; // SHA-256 пароля разработчика
+var DEV_HASH = '1dde21d9dfbe48a35ea7f9e129b264ae705104669bbadcf8046feed750ba77c2'; // SHA-256 пароля разработчика
 var STAGES = ['rec', 'edit', 'up'];
 var STAFF_OF = { rec: 'op', edit: 'ed', up: 'mg' };
 var TABS = ['gear', 'team', 'home', 'channel', 'comments'];
@@ -750,14 +750,14 @@ function logoClick() {
   logoClicks = logoClicks.filter(function (x) { return nowMs - x < 2000; }); logoClicks.push(nowMs);
   if (logoClicks.length >= 5) {
     logoClicks = [];
-    if (settings.dev) openDev();
+    if (settings.dev && settings.devHash === DEV_HASH) openDev();
     else { $('devPass').value = ''; $('devWrong').hidden = true; show('devGate'); setTimeout(function () { $('devPass').focus(); }, 50); A.play('card'); }
   }
 }
 $('logoTxt').parentNode.addEventListener('click', logoClick);
 $('titleLogo').addEventListener('click', logoClick);
 function tryPass() {
-  if (window.sha256($('devPass').value.trim()) === DEV_HASH) { settings.dev = true; saveSettings(); hide('devGate'); A.play('milestone'); openDev(); }
+  if (window.sha256($('devPass').value.trim()) === DEV_HASH) { settings.dev = true; settings.devHash = DEV_HASH; saveSettings(); hide('devGate'); A.play('milestone'); openDev(); }
   else {
     var card = $('devGate').querySelector('.modal'); card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
     $('devWrong').textContent = t('dev_wrong'); $('devWrong').hidden = false; A.play('bad');

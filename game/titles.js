@@ -3,6 +3,7 @@
 // Русские и английские списки выровнены по индексам, поэтому название переводится при смене языка.
 window.TITLES = {
   nums: [100, 7, 30, 1000, 5, 10, 48, 365, 50, 12],
+  mins: [5, 7, 10, 15, 20, 30],
   // Каждый шаблон: [текст, слова для {a}, слова для {b}]. Слова уже в нужном падеже.
   ru: {
     games: [
@@ -10,11 +11,11 @@ window.TITLES = {
       ['Прошёл {a} {b}', ['самую сложную игру', 'игру из детства', 'хоррор', 'игру с худшими отзывами', 'бесплатную игру'], ['без единого урона', 'вслепую', 'с одним предметом', 'за один вечер', 'без прыжков']],
       ['Эта {a} сломала мне мозг', ['головоломка', 'инди-игра', 'бесплатная игра', 'игра на одну кнопку', 'старая игра']],
       ['Построил {a} за {n} часов', ['огромный город', 'секретную базу', 'замок из ста комнат', 'работающий компьютер', 'парк аттракционов']],
-      ['Спидран {a} за {n} минут', ['первой части', 'игры из детства', 'самого сложного уровня', 'всей игры']],
+      ['Спидран {a} за {m} минут', ['первой части', 'игры из детства', 'самого сложного уровня', 'всей игры']],
       ['Нашёл {a}, о которой никто не знает', ['секретную концовку', 'скрытую комнату', 'пасхалку', 'тайную локацию']]
     ],
     cooking: [
-      ['Готовлю {a} за {n} минут', ['бургер', 'рамен', 'торт', 'пасту', 'завтрак на всю семью']],
+      ['Готовлю {a} за {m} минут', ['бургер', 'рамен', 'торт', 'пасту', 'завтрак на всю семью']],
       ['Дешёвый {a} против дорогого', ['бургер', 'стейк', 'торт', 'кофе', 'суши-сет']],
       ['Повторяю {a} из фильма', ['пиццу', 'завтрак', 'торт', 'суп', 'бургер']],
       ['Ем только {a} {n} часов', ['уличную еду', 'еду из автомата', 'острые блюда', 'фастфуд', 'сладкое']],
@@ -82,7 +83,7 @@ window.TITLES = {
       ['{n} часов звуков {a}', ['дождя', 'камина', 'моря', 'леса', 'клавиатуры']],
       ['Тихий шёпот: {a}', ['сказка на ночь', 'рецепт печенья', 'прогноз погоды', 'история замка']],
       ['Звуки {a} для учёбы', ['дождя', 'кафе', 'библиотеки', 'поезда', 'камина']],
-      ['Мурашки за {n} минут', []],
+      ['Мурашки за {m} минут', []],
       ['АСМР, но {a}', ['без слов', 'с котом', 'в лесу', 'на кухне', 'в поезде']]
     ]
   },
@@ -92,11 +93,11 @@ window.TITLES = {
       ['I beat {a} {b}', ['the hardest game', 'my childhood game', 'a horror game', 'the worst-rated game', 'a free game'], ['without taking damage', 'blindfolded', 'with one item', 'in one evening', 'without jumping']],
       ['This {a} broke my brain', ['puzzle game', 'indie game', 'free game', 'one-button game', 'old game']],
       ['I built {a} in {n} hours', ['a huge city', 'a secret base', 'a 100-room castle', 'a working computer', 'a theme park']],
-      ['Speedrunning {a} in {n} minutes', ['the first game', 'my childhood game', 'the hardest level', 'the whole game']],
+      ['Speedrunning {a} in {m} minutes', ['the first game', 'my childhood game', 'the hardest level', 'the whole game']],
       ['I found {a} nobody knows about', ['a secret ending', 'a hidden room', 'an Easter egg', 'a secret location']]
     ],
     cooking: [
-      ['Making {a} in {n} minutes', ['a burger', 'ramen', 'a cake', 'pasta', 'family breakfast']],
+      ['Making {a} in {m} minutes', ['a burger', 'ramen', 'a cake', 'pasta', 'family breakfast']],
       ['Cheap {a} vs expensive {a}', ['burger', 'steak', 'cake', 'coffee', 'sushi']],
       ['Recreating {a} from a movie', ['the pizza', 'the breakfast', 'the cake', 'the soup', 'the burger']],
       ['Eating only {a} for {n} hours', ['street food', 'vending machine food', 'spicy food', 'fast food', 'sweets']],
@@ -164,7 +165,7 @@ window.TITLES = {
       ['{n} hours of {a} sounds', ['rain', 'fireplace', 'ocean', 'forest', 'keyboard']],
       ['Soft whispers: {a}', ['a bedtime story', 'a cookie recipe', 'the weather forecast', 'a castle tale']],
       ['{a} sounds for studying', ['Rain', 'Café', 'Library', 'Train', 'Fireplace']],
-      ['Tingles in {n} minutes', []],
+      ['Tingles in {m} minutes', []],
       ['ASMR, but {a}', ['no talking', 'with a cat', 'in the woods', 'in the kitchen', 'on a train']]
     ]
   },

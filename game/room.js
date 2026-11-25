@@ -580,5 +580,24 @@
     }
   }
 
-  window.Room = { draw: draw, W: W, H: H };
+  // Рисование отдельных картинок для 3D-комнаты (декор темы, ковёр, картина, награды)
+  function painter(fn) { return function (c) { var prev = ctx; ctx = c; try { fn.apply(null, Array.prototype.slice.call(arguments, 1)); } finally { ctx = prev; } }; }
+  window.Room = {
+    draw: draw, W: W, H: H,
+    paintDecor: painter(function (theme) { drawDecorRaw(theme, 0, 0); }),
+    paintCarpet: painter(function () { drawCarpet(); }),
+    paintArt: painter(function (home) { drawArt(home); }),
+    paintAwards: painter(function (ms, MS) {
+      var colors = ['#e5a46b', '#c9d2de', '#ffc23d', '#8fd3ff', '#ff5d4f'];
+      for (var i = 0; i < 5; i++) {
+        var x = i * 42;
+        if (i >= ms.length) { rr(x, 0, 34, 42, 5); ctx.setLineDash([4, 4]); ctx.lineWidth = 1.8; ctx.strokeStyle = 'rgba(31,35,56,.28)'; ctx.stroke(); ctx.setLineDash([]); continue; }
+        rr(x, 0, 34, 42, 5); shape(colors[i], 2.4); rr(x + 5, 5, 24, 17, 4); shape('#fff', 2);
+        ctx.beginPath(); for (var k = 0; k < 10; k++) { var a = -Math.PI / 2 + k * Math.PI / 5, rad = k % 2 ? 3 : 6.5; ctx.lineTo(x + 17 + Math.cos(a) * rad, 13.5 + Math.sin(a) * rad); }
+        ctx.closePath(); ctx.fillStyle = INK; ctx.fill();
+        var v = MS[i]; ctx.font = '700 10px Rubik, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = INK;
+        ctx.fillText(v >= 1e6 ? '1M' : v >= 1000 ? (v / 1000) + 'K' : v, x + 17, 36);
+      }
+    })
+  };
 })();

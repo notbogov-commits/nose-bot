@@ -1,7 +1,7 @@
 // ЮТУБЕРЫ — интерфейс: связывает логику, тексты, звук и отрисовку квартиры.
 (function () {
 'use strict';
-var TITLES = window.TITLES, L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
+var BANNERS = window.BANNERS, TITLES = window.TITLES, L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
 var SLOT_KEY = 'youtubers_slot_', META_KEY = 'youtubers_meta', SET_KEY = 'youtubers_settings', SLOTS = 3;
 var DEV_HASH = '36b07348d7b7e38b41a3fb2e9e9dfd0a87b18f2682a981c03440f6ba30ab0e21'; // SHA-256 пароля разработчика
 var STAGES = ['rec', 'edit', 'up'];
@@ -57,18 +57,13 @@ function videoTitle(v) {
   var ch = S.channels[v.ch]; if (!ch) return '…';
   var G = TITLES[settings.lang][ch.theme], tt = v.tt || [v.n, v.n * 3, v.n * 7, v.n * 11];
   var tpl = G[tt[0] % G.length], pick = function (arr, k) { return arr && arr.length ? arr[tt[k] % arr.length] : ''; };
-  var s = tpl[0].split('{a}').join(pick(tpl[1], 1)).split('{b}').join(pick(tpl[2], 2)).split('{n}').join(pick(TITLES.nums, 3));
+  var s = tpl[0].split('{a}').join(pick(tpl[1], 1)).split('{b}').join(pick(tpl[2], 2)).split('{n}').join(pick(TITLES.nums, 3)).split('{m}').join(pick(TITLES.mins, 3));
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function chName(i) { var ch = S.channels[i]; return ch ? (ch.name || th(ch.theme).name) : ''; }
-function chStyle(ch) { return TITLES.styles[ch.theme][ch.style || 0]; }
-function patternCss(st) {
-  var a = st[0], b = st[1];
-  if (st[3] === 'grid') return 'background:' + a + ';background-image:linear-gradient(' + b + '33 2px,transparent 2px),linear-gradient(90deg,' + b + '33 2px,transparent 2px);background-size:16px 16px';
-  if (st[3] === 'dots') return 'background:' + a + ';background-image:radial-gradient(' + b + '66 3px,transparent 3.5px);background-size:16px 16px';
-  if (st[3] === 'zig') return 'background:' + a + ';background-image:linear-gradient(135deg,' + b + '55 25%,transparent 25%),linear-gradient(225deg,' + b + '55 25%,transparent 25%);background-size:20px 20px';
-  return 'background:repeating-linear-gradient(135deg,' + a + ' 0 12px,' + b + ' 12px 18px)';
-}
+function C() { return L.channel(S); }
+function bannerCss(ch) { return BANNERS.css(ch.theme, ch.style || 0); }
+function avatarColor(ch) { return BANNERS.avatar(ch.theme, ch.style || 0); }
 function fmtLen(sec) { var m = Math.floor(sec / 60); return m + ':' + ('0' + (sec % 60)).slice(-2); }
 
 /* ---------- Мелочи ---------- */
@@ -110,8 +105,12 @@ function renderChans() {
   var box = $('chans'); box.innerHTML = '';
   S.channels.forEach(function (ch, i) {
     var b = document.createElement('button'); b.type = 'button'; b.className = 'chan'; b.setAttribute('aria-pressed', i === S.active);
-    b.innerHTML = '<span class="ti" style="background:' + chStyle(ch)[2] + '">' + THEME_ICON[ch.theme] + '</span><span>' + esc(chName(i)) + '</span><small id="chs-' + i + '"></small>';
-    b.addEventListener('click', function () { if (S.active !== i) { S.active = i; A.play('ui'); renderChans(); renderStageLabels(); buildTab(); renderAll(); save(); } });
+    b.innerHTML = '<span class="ti" style="background:' + avatarColor(ch) + '">' + THEME_ICON[ch.theme] + '</span><span>' + esc(chName(i)) + '</span><small id="chs-' + i + '"></small>';
+    if (ch.banned) { b.classList.add('banned'); b.title = t('ch_banned'); }
+    b.addEventListener('click', function () {
+      if (S.active !== i) { S.active = i; A.play('ui'); renderChans(); renderStageLabels(); buildTab(); renderAll(); save(); }
+      else if (ch.banned) openPicker('replace');
+    });
     box.appendChild(b);
   });
   if (S.channels.length === 1) {
@@ -134,14 +133,14 @@ var pickMode = 'first', picked = null, pickedStyle = 0;
 function openPicker(mode) {
   pickMode = mode; picked = null; pickedStyle = 0;
   $('pickStep1').hidden = false; $('pickStep2').hidden = true;
-  $('pickH').textContent = t(mode === 'first' ? 'pick_h' : 'pick_second_h');
-  $('pickP').textContent = mode === 'first' ? t('pick_p', { n: fmt(L.SECOND_CHANNEL_AT) }) : t('pick_second_p');
+  $('pickH').textContent = t(mode === 'first' ? 'pick_h' : mode === 'replace' ? 'pick_replace_h' : 'pick_second_h');
+  $('pickP').textContent = mode === 'first' ? t('pick_p', { n: fmt(L.SECOND_CHANNEL_AT) }) : mode === 'replace' ? t('pick_replace_p') : t('pick_second_p');
   $('pickCancel').hidden = mode === 'first'; $('pickNext').disabled = true;
   var grid = $('tgrid'); grid.innerHTML = '';
   L.THEME_IDS.forEach(function (id) {
     var tt = th(id), b = document.createElement('button');
     b.type = 'button'; b.className = 'tcard'; b.setAttribute('aria-pressed', 'false');
-    b.disabled = mode === 'second' && S.channels[0] && S.channels[0].theme === id;
+    b.disabled = mode !== 'first' && S.channels.some(function (c) { return !c.banned && c.theme === id; });
     var r = L.THEMES[id].rpm;
     b.innerHTML = '<span class="ti" style="background:' + THEME_TINT[id] + '">' + THEME_ICON[id] + '</span><b>' + esc(tt.name) + '</b><span><em>+</em> ' + esc(tt.plus) + '</span><span><em>−</em> ' + esc(tt.minus) + '</span><span><em>RPM</em> ~$' + dec(r) + '</span>';
     b.addEventListener('click', function () {
@@ -161,13 +160,13 @@ function renderPickStep2() {
 }
 function renderStyles() {
   var g = $('sgrid'); g.innerHTML = '';
-  TITLES.styles[picked].forEach(function (st, i) {
+  for (var i = 0; i < BANNERS.count; i++) (function (i) {
     var b = document.createElement('button'); b.type = 'button'; b.className = 'scard'; b.setAttribute('aria-pressed', i === pickedStyle);
-    b.innerHTML = '<div class="sb" style="' + patternCss(st) + '"></div><div class="sh"><span class="av" style="background:' + st[2] + '">' + THEME_ICON[picked] + '</span><span>' + esc($('nameIn').value || t('name_ph')) + '</span></div>';
+    b.innerHTML = '<div class="sb" style="' + BANNERS.css(picked, i) + '"></div><div class="sh"><span class="av" style="background:' + BANNERS.avatar(picked, i) + '">' + THEME_ICON[picked] + '</span><span>' + esc($('nameIn').value || t('name_ph')) + '</span></div>';
     b.setAttribute('aria-label', t('style_n', { n: i + 1 }));
     b.addEventListener('click', function () { pickedStyle = i; A.play('ui'); renderStyles(); });
     g.appendChild(b);
-  });
+  })(i);
 }
 $('pickNext').addEventListener('click', function () {
   if (!picked) return;
@@ -192,8 +191,10 @@ function handle(events) {
     if (e.type === 'published') {
       var key = e.viral ? 'viral' : e.boost === 'collab' ? 'boosted_collab' : e.boost === 'trend' ? 'boosted_trend' : 'published';
       addFeed(t(key, { title: esc(videoTitle(e.video)), v: '<b>' + fmt(e.views) + '</b>', s: fmt(e.subs) }), e.viral ? 'viral' : '');
-      floater('+' + fmt(e.views) + ' ' + t('unit_views'), e.viral ? 'viral' : '');
-      if (e.money > 0) setTimeout(function () { floater('+' + fmtMoney(e.money)); }, 250);
+      if (e.ch === S.active) {
+        floater('+' + fmt(e.views) + ' ' + t('unit_views'), e.viral ? 'viral' : '');
+        if (e.money > 0) setTimeout(function () { floater('+' + fmtMoney(e.money)); }, 250);
+      }
       A.play(e.viral ? 'viral' : 'publish'); lastPublish = now;
       if (shopTab === 'channel') buildTab();
     } else if (e.type === 'recorded' || e.type === 'edited') A.play('step');
@@ -203,6 +204,7 @@ function handle(events) {
     else if (e.type === 'second_ready') { toast(t('second_ready')); addFeed('<b>' + esc(t('second_ready')) + '</b>', 'ms'); renderChans(); A.play('good'); }
     else if (e.type === 'event') { renderEventModal(true); A.play(e.event.kind === 'monetized' ? 'milestone' : 'card'); }
     else if (e.type === 'auto_event') { if (e.result) addFeed(esc(t('auto_event', { r: resultText(e.result, e.event) }))); }
+    else if (e.type === 'speed_unlocked') { toast(t('speed_unlocked')); addFeed('<b>' + esc(t('speed_unlocked')) + '</b>', 'ms'); A.play('good'); renderSpeed(); }
     else if (e.type === 'shift_start') { addFeed(esc(t('shift_start'))); A.play('ui'); }
     else if (e.type === 'shift_done') { toast(t('job_done', { pay: fmtMoney(e.pay) })); addFeed(esc(t('job_done', { pay: fmtMoney(e.pay) }))); floater('+' + fmtMoney(e.pay)); A.play('buy'); }
     else if (e.type === 'effect_end') { if (e.effect === 'strike' || e.effect === 'broken') addFeed(esc(t('effect_end_' + e.effect))); }
@@ -260,6 +262,7 @@ function answer(opt) {
   addFeed(esc(txt), bad ? 'bad' : ''); toast(txt);
   A.play(bad ? 'bad' : (opt === 'decline' || opt === 'skip' || opt === 'ignore') ? 'ui' : 'good');
   renderEventModal(true); buildTab(); renderAll(); save();
+  if (res.kind === 'banned') openPicker('replace');
 }
 function resultText(r, ev) {
   return t('r_' + r.kind + '_' + r.opt, { m: fmtMoney(r.money || 0), s: fmt(Math.abs(r.subs || 0)) });
@@ -304,23 +307,24 @@ function shopItems() {
   var tt = th(L.channel(S).theme);
   if (shopTab === 'gear') {
     L.GEAR_IDS.forEach(function (kind) {
-      var tiers = L.GEAR[kind], lvl = S.gear[kind], cur = tiers[lvl], nxt = tiers[lvl + 1], cost = L.gearCost(S, kind), blocked = L.gearBlocked(S, kind);
+      var tiers = L.GEAR[kind], lvl = C().gear[kind], cur = tiers[Math.max(0, lvl)], nxt = tiers[lvl + 1], cost = L.gearCost(S, kind), blocked = L.gearBlocked(S, kind);
       out.push({
-        id: kind, icon: ICON[kind], name: t(cur.id), dots: [lvl, tiers.length - 1],
-        sub: !nxt ? t('d_max') : blocked ? t('need_home', { home: t(L.HOMES[L.gearNeedsHome(kind, lvl + 1)].id) }) : t('d_' + kind, { p: nxt.power, q: dec(nxt.q) }),
-        warn: !!nxt && blocked, cost: cost, max: !nxt, blocked: blocked,
-        seen: !nxt || lvl > 0 || cost <= 60 || S.money >= cost * 0.35,
-        buy: function () { if (L.buyGear(S, kind)) { toast(t('bought', { n: t(L.GEAR[kind][S.gear[kind]].id) })); return true; } }
+        id: kind, icon: ICON[kind], name: lvl < 0 ? t('gear_none', { n: t(kind) }) : t(cur.id), dots: [Math.max(0, lvl), tiers.length - 1],
+        sub: lvl < 0 ? t('gear_need_' + kind, { n: t(nxt.id) }) : !nxt ? t('d_max') : blocked ? t('need_home', { home: t(L.HOMES[L.gearNeedsHome(kind, lvl + 1)].id) }) : t('d_' + kind, { p: nxt.power, q: dec(nxt.q) }),
+        warn: (!!nxt && blocked) || lvl < 0, cost: cost, max: !nxt, blocked: blocked,
+        seen: !nxt || lvl !== 0 || cost <= 60 || S.money >= cost * 0.35,
+        buy: function () { if (L.buyGear(S, kind)) { toast(t('bought', { n: t(L.GEAR[kind][C().gear[kind]].id) })); return true; } }
       });
     });
   } else if (shopTab === 'team') {
     ['op', 'ed', 'mg'].forEach(function (kind) {
-      var c = L.staffCost(S, kind), lvl = S.staff[kind];
+      var r = C().staff[kind], hc = L.hireCost(S, kind), tc = L.trainCost(S, kind);
       out.push({
-        id: kind, icon: ICON[kind], name: t(kind), lvl: lvl,
-        sub: t('d_' + kind, { stage: tt[L.STAFF[kind].stage], a: L.MG_AUTO_COMMENTS, b: L.MG_AUTO_EVENTS }),
-        cost: c, max: c == null, seen: lvl > 0 || S.money >= (c || 0) * 0.35,
-        buy: function () { if (L.hire(S, kind)) { toast(t('hired', { n: t(kind), l: S.staff[kind] })); return true; } }
+        id: kind, icon: ICON[kind], name: t(kind), staff: r,
+        sub: t('d_' + kind, { a: L.MG_AUTO_COMMENTS, b: L.MG_AUTO_EVENTS }),
+        cost: hc, max: hc == null, seen: true, cost2: tc, max2: r.n > 0 && tc == null,
+        buy: function () { if (L.hire(S, kind)) { toast(t('hired_n', { n: t(kind), c: C().staff[kind].n })); return true; } },
+        buy2: function () { if (L.train(S, kind)) { toast(t('trained', { n: t(kind), l: C().staff[kind].lvl })); return true; } }
       });
     });
   } else if (shopTab === 'home') {
@@ -340,13 +344,18 @@ function buildTab() {
   var box = $('items'); box.innerHTML = ''; itemEls = {};
   if (shopTab === 'channel') { renderChannelPage(); return; }
   if (shopTab === 'comments') { renderComments(); return; }
+  if (shopTab === 'team') { var note = document.createElement('p'); note.className = 'note'; note.textContent = t('team_note'); box.appendChild(note); }
   shopItems().forEach(function (it) {
     var row = document.createElement('div'); row.className = 'item'; row.id = 'item-' + it.id;
-    row.innerHTML = '<div class="ico">' + it.icon + '</div><div class="txt"><b></b><span></span></div><button class="buy" type="button" id="buy-' + it.id + '"></button>';
-    row.querySelector('.buy').addEventListener('click', function () {
-      var cur = shopItems().filter(function (x) { return x.id === it.id; })[0];
-      if (cur && cur.cost != null && !cur.blocked && S.money >= cur.cost && cur.buy()) { A.play('buy'); save(); buildTab(); renderAll(); }
-    });
+    row.innerHTML = '<div class="ico">' + it.icon + '</div><div class="txt"><b></b><span></span></div><div class="btns"><button class="buy" type="button" id="buy-' + it.id + '"></button>' +
+      (it.staff ? '<button class="buy alt" type="button" id="train-' + it.id + '"></button>' : '') + '</div>';
+    var click = function (which) {
+      var cur = shopItems().filter(function (x) { return x.id === it.id; })[0]; if (!cur) return;
+      var cost = which === 2 ? cur.cost2 : cur.cost, fn = which === 2 ? cur.buy2 : cur.buy;
+      if (cost != null && !cur.blocked && S.money >= cost && fn()) { A.play('buy'); save(); buildTab(); renderAll(); }
+    };
+    row.querySelector('#buy-' + it.id).addEventListener('click', function () { click(1); });
+    if (it.staff) row.querySelector('#train-' + it.id).addEventListener('click', function () { click(2); });
     box.appendChild(row); itemEls[it.id] = row;
   });
   renderShop();
@@ -355,21 +364,26 @@ function renderShop() {
   if (shopTab !== 'gear' && shopTab !== 'team' && shopTab !== 'home') return;
   shopItems().forEach(function (it) {
     var row = itemEls[it.id]; if (!row) return;
-    var b = row.querySelector('.txt b'), sp = row.querySelector('.txt > span'), btn = row.querySelector('.buy');
+    var b = row.querySelector('.txt b'), sp = row.querySelector('.txt > span'), btn = row.querySelector('#buy-' + it.id), btn2 = row.querySelector('#train-' + it.id);
     row.classList.toggle('locked', !it.seen); row.classList.toggle('current', !!it.current);
     var html;
     if (!it.seen) html = t('locked');
     else {
       html = esc(it.name);
       if (it.dots) { html += '<span class="dots">'; for (var i = 1; i <= it.dots[1]; i++) html += '<i class="' + (i <= it.dots[0] ? 'on' : '') + '"></i>'; html += '</span>'; }
-      if (it.lvl != null) html += it.lvl ? '<span class="lvl">' + esc(t('lvl', { n: it.lvl })) + '</span>' : '<span class="lvl off">' + esc(t('not_hired')) + '</span>';
+      if (it.staff) html += it.staff.n ? '<span class="lvl">' + esc(t('staff_lvl', { c: it.staff.n, m: L.MAX_PEOPLE, l: it.staff.lvl })) + '</span>' : '<span class="lvl off">' + esc(t('not_hired')) + '</span>';
       if (it.current) html += '<span class="lvl now">' + esc(t('home_now')) + '</span>';
     }
     if (b.innerHTML !== html) b.innerHTML = html;
     sp.textContent = it.seen ? it.sub : ''; sp.className = it.warn ? 'warn' : '';
-    if (it.max) { btn.textContent = shopTab === 'home' ? '✓' : t('max'); btn.disabled = true; btn.classList.add('max'); btn.hidden = !!it.current; }
+    if (it.max) { btn.textContent = shopTab === 'home' ? '✓' : it.staff ? t('max_people') : t('max'); btn.disabled = true; btn.classList.add('max'); btn.hidden = !!it.current; }
     else if (it.cost == null) { btn.hidden = true; }
-    else { btn.hidden = false; btn.classList.remove('max'); btn.textContent = fmtMoney(it.cost); btn.disabled = S.money < it.cost || !it.seen || it.blocked; }
+    else { btn.hidden = false; btn.classList.remove('max'); btn.textContent = (it.staff ? t('hire_btn') + ' ' : '') + fmtMoney(it.cost); btn.disabled = S.money < it.cost || !it.seen || it.blocked; }
+    if (btn2) {
+      btn2.hidden = !it.staff.n;
+      if (it.max2) { btn2.textContent = t('max_lvl'); btn2.disabled = true; btn2.classList.add('max'); }
+      else if (it.cost2 != null) { btn2.classList.remove('max'); btn2.textContent = t('train_btn') + ' ' + fmtMoney(it.cost2); btn2.disabled = S.money < it.cost2; }
+    }
   });
 }
 
@@ -398,8 +412,7 @@ function agoText(sec) {
   return t('ago_d', { n: Math.floor(hours / 24) });
 }
 function thumbHtml(v, ch) {
-  var st = chStyle(ch);
-  return '<div class="thumb" style="' + patternCss(st) + '">' + THEME_ICON[ch.theme] + '<small>' + fmtLen(v.len || 600) + '</small></div>';
+  return '<div class="thumb" style="' + bannerCss(ch) + '"><span class="tico" style="background:' + avatarColor(ch) + '">' + THEME_ICON[ch.theme] + '</span><small>' + fmtLen(v.len || 600) + '</small></div>';
 }
 function badgesHtml(v) {
   return (!v.mon ? '<span class="nomon">' + esc(t('b_nomon')) + '</span>' : '') + (v.cut ? '<span class="cut">' + esc(t('b_cut')) + '</span>' : '') +
@@ -407,15 +420,15 @@ function badgesHtml(v) {
 }
 function renderChannelPage() {
   var box = $('items'); if (!S.channels.length) { box.innerHTML = ''; return; }
-  var ch = L.channel(S), id = ch.theme, n = L.strikes(S), st = chStyle(ch);
+  var ch = L.channel(S), id = ch.theme, n = ch.strikes;
   var vids = S.videos.filter(function (v) { return v.ch === S.active; }).slice().reverse();
-  var html = '<div class="chpage"><div class="banner" style="' + patternCss(st) + '"></div>' +
-    '<div class="chhead"><div class="avatar" style="background:' + st[2] + '">' + THEME_ICON[id] + '</div>' +
+  var html = '<div class="chpage"><div class="banner" style="' + bannerCss(ch) + '"></div>' +
+    '<div class="chhead"><div class="avatar" style="background:' + avatarColor(ch) + '">' + THEME_ICON[id] + '</div>' +
     '<div><h4>' + esc(chName(S.active)) + '</h4><p>' + esc(th(id).name) + ' · ' + esc(t('ch_subs', { n: fmt(ch.subs) })) + ' · ' + esc(t('ch_videos', { n: fmt(ch.videos) })) + ' · ' + esc(t('ch_views', { n: fmt(ch.views) })) + '</p></div></div>' +
     '<div class="chmeta"><span class="' + (ch.monetized ? 'on' : '') + '">' + esc(ch.monetized ? t('mon_on') : t('mon_off', { n: fmtFull(L.MONETIZE_AT) })) + '</span>' +
     '<span>' + esc(t('ch_earned', { n: fmtMoney(ch.earned || 0) })) + '</span>' +
     '<span class="' + (n ? 'bad' : '') + '">' + esc(t('strikes_now', { n: n, m: L.MAX_STRIKES })) + '</span>' +
-    '<span>' + esc(t('trust')) + ': ' + Math.round(S.trust) + '%</span></div>' +
+    '<span>' + esc(t('trust')) + ': ' + Math.round(ch.trust) + '%</span></div>' + (ch.banned ? '<p class="note" style="color:#c4453a;font-weight:800">' + esc(t('ch_banned_note')) + '</p>' : '') +
     '<div class="label">' + esc(t('last3')) + '</div><div class="vlist">';
   if (!vids.length) html += '<p class="note">' + esc(t('no_videos')) + '</p>';
   vids.slice(0, 3).forEach(function (v) {
@@ -436,7 +449,7 @@ function openAllVideos() {
   vids.forEach(function (v) {
     var views = L.videoViews(S, v), cell = function (k, val, hot) { return '<div' + (hot ? ' class="hot"' : '') + '><span>' + esc(t(k)) + '</span><strong>' + val + '</strong></div>'; };
     html += '<div class="vcard">' + thumbHtml(v, ch) + '<div><b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' + badgesHtml(v) + '</div>' +
-      '<div class="vstats">' + cell('st_views', fmt(views)) + cell('st_earned', ch.monetized ? fmtMoney(L.videoEarned(S, v)) : esc(t('no_mon'))) + cell('st_comments', fmt(v.cm || 0)) + '</div></div></div>';
+      '<div class="vstats">' + cell('st_views', fmt(views)) + cell('st_earned', fmtMoney(L.videoEarned(S, v))) + cell('st_comments', fmt(v.cm || 0)) + '</div></div></div>';
   });
   if (!vids.length) html = '<p class="note">' + esc(t('no_videos')) + '</p>';
   $('vidsList').innerHTML = html; $('vidsBox').hidden = false;
@@ -458,7 +471,7 @@ function commentHtml(c, ignored) {
 }
 function renderComments() {
   var box = $('items'), list = S.comments.slice().reverse(), html = '';
-  html += '<p class="note">' + esc(t('cm_deadline')) + ' ' + esc(S.staff.mg >= L.MG_AUTO_COMMENTS ? t('cm_auto_on') : t('cm_auto', { n: L.MG_AUTO_COMMENTS })) + '</p>';
+  html += '<p class="note">' + esc(t('cm_deadline')) + ' ' + esc(L.mgAuto(C(), L.MG_AUTO_COMMENTS) ? t('cm_auto_on') : t('cm_auto', { n: L.MG_AUTO_COMMENTS })) + '</p>';
   if (!list.length) html += '<p class="note">' + esc(t('cm_empty')) + '</p>';
   list.forEach(function (c) { html += commentHtml(c, false); });
   if (S.ignored.length) {
@@ -507,25 +520,27 @@ function renderJob() {
 }
 function renderStages() {
   if (!S.channels.length) return;
+  var ch = C();
   STAGES.forEach(function (st) {
-    $('bar-' + st).style.width = Math.min(100, S.work[st] / L.workNeed(S, st) * 100) + '%';
+    $('bar-' + st).style.width = Math.min(100, ch.work[st] / L.workNeed(S, st) * 100) + '%';
     var ok = L.canWork(S, st); $('btn-' + st).disabled = !ok;
     var meta = [], sk = STAFF_OF[st];
-    if (S.job.active) meta.push(t('at_job'));
-    else if (!L.stageOpen(S, st)) meta.push(st === 'up' && S.edited.length > 0 ? t('blocked', { n: L.strikes(S) }) : t(st === 'edit' ? 'need_raw' : 'need_edit'));
+    if (ch.banned) meta.push(t('ch_banned'));
+    else if (S.job.active) meta.push(t('at_job'));
+    else if (!L.hasGear(ch, st)) meta.push(t('no_gear_' + st));
+    else if (!L.stageOpen(S, st)) meta.push(t(st === 'edit' ? 'need_raw' : 'need_edit'));
     else meta.push(t('per_click', { n: L.power(S, st) }));
-    if (S.staff[sk] > 0) meta.push(t('auto', { who: t('who_' + sk), n: dec(Math.round(L.staffRate(S, sk) * 10) / 10) }));
+    if (ch.staff[sk].n > 0) meta.push(t('auto', { who: t('who_' + sk), n: dec(Math.round(L.staffRate(S, sk) * 10) / 10) }));
     $('meta-' + st).textContent = meta.join(' · ');
   });
-  $('cnt-edit').textContent = S.raw.length ? t('queue', { n: S.raw.length }) : '';
-  $('cnt-up').textContent = S.edited.length ? t('queue', { n: S.edited.length }) : '';
-
+  $('cnt-edit').textContent = ch.raw.length ? t('queue', { n: ch.raw.length }) : '';
+  $('cnt-up').textContent = ch.edited.length ? t('queue', { n: ch.edited.length }) : '';
 }
 function renderFx() {
-  var parts = [], n = L.strikes(S);
-  if (n) { var left = 0; S.effects.forEach(function (e) { if (e.type === 'strike' && e.ch === S.active) left = Math.max(left, e.until - S.played); }); parts.push('<span class="bad">' + esc(t('fx_strike', { n: n, t: fmtClock(left) })) + '</span>'); }
+  var parts = [], n = C().strikes;
+  if (n) parts.push('<span class="bad">' + esc(t('fx_strikes', { n: n, m: L.MAX_STRIKES })) + '</span>');
   S.effects.forEach(function (e) {
-    if (e.type === 'broken') parts.push('<span class="bad">' + esc(t('fx_broken', { t: fmtClock(e.until - S.played) })) + '</span>');
+    if (e.type === 'broken' && e.ch === S.active) parts.push('<span class="bad">' + esc(t('fx_broken', { t: fmtClock(e.until - S.played) })) + '</span>');
     if (e.type === 'boost' && e.ch === S.active) parts.push('<span class="good">' + esc(e.src === 'collab' ? t('fx_collab', { m: dec(e.mult) }) : t('fx_trend')) + '</span>');
   });
   var html = parts.join(''); if ($('fx').innerHTML !== html) $('fx').innerHTML = html;
@@ -541,7 +556,7 @@ function renderAll() {
   var p = Math.min(100, ch.subs / L.GOAL_SUBS * 100);
   $('goalBar').style.width = p + '%';
   $('goalTxt').textContent = t('goal', { p: p < 10 ? dec(p.toFixed(2)) : Math.floor(p) });
-  $('money').textContent = fmtMoney(S.money); $('trust').textContent = Math.round(S.trust) + '%';
+  $('money').textContent = fmtMoney(S.money); $('trust').textContent = Math.round(C().trust) + '%';
   $('quality').textContent = '×' + dec(Math.round(L.quality(S) * 10) / 10); $('videos').textContent = fmt(ch.videos);
   var cb = $('cmBadge'); cb.hidden = !S.comments.length; cb.textContent = S.comments.length > 9 ? '9+' : S.comments.length;
   updateChanSubs(); renderJob(); renderStages(); renderShop(); renderFx(); renderEventModal(false);
@@ -555,11 +570,11 @@ function cheapestGear() {
   return { kind: best, cost: cost };
 }
 function tutStep() {
-  var videos = L.totalVideos(S), gearSum = 0, staffSum = S.staff.op + S.staff.ed + S.staff.mg;
-  L.GEAR_IDS.forEach(function (k) { gearSum += S.gear[k]; });
+  var ch = C(), videos = L.totalVideos(S), gearSum = 0, staffSum = ch.staff.op.n + ch.staff.ed.n + ch.staff.mg.n;
+  L.GEAR_IDS.forEach(function (k) { gearSum += Math.max(0, ch.gear[k]); });
   switch (S.tut) {
-    case 1: return { done: S.raw.length > 0 || S.edited.length > 0 || videos > 0, el: $('btn-rec') };
-    case 2: return { done: S.edited.length > 0 || videos > 0, el: $('btn-edit') };
+    case 1: return { done: ch.raw.length > 0 || ch.edited.length > 0 || videos > 0, el: $('btn-rec') };
+    case 2: return { done: ch.edited.length > 0 || videos > 0, el: $('btn-edit') };
     case 3: return { done: videos > 0, el: $('btn-up') };
     case 4: return { el: $('stats'), ok: true };
     case 5: return { el: $('monChip'), ok: true };
@@ -761,13 +776,12 @@ function openDev() {
     ['dev_subs', [['+1K', function () { ch().subs += 1e3; }], ['+100K', function () { ch().subs += 1e5; }], ['+900K', function () { ch().subs += 9e5; }]]],
     ['dev_speed', [['×1', function () { timeScale = 1; }], ['×5', function () { timeScale = 5; }], ['×20', function () { timeScale = 20; }]]],
     ['dev_misc', [
-      [t('dev_trust'), function () { S.trust = 100; }],
+      [t('dev_trust'), function () { C().trust = 100; }],
       [t('dev_mon'), function () { ch().subs = Math.max(ch().subs, L.MONETIZE_AT); }],
-      [t('dev_gear'), function () { S.home = L.HOMES.length - 1; L.GEAR_IDS.forEach(function (k) { S.gear[k] = L.GEAR[k].length - 1; }); }],
-      [t('dev_team'), function () { for (var k in L.STAFF) S.staff[k] = L.STAFF[k].max; }],
+      [t('dev_gear'), function () { S.home = L.HOMES.length - 1; L.GEAR_IDS.forEach(function (k) { C().gear[k] = L.GEAR[k].length - 1; }); }],
+      [t('dev_team'), function () { for (var k in L.STAFF) C().staff[k] = { n: L.MAX_PEOPLE, lvl: L.MAX_LVL }; }],
       [t('dev_home'), function () { if (S.home < L.HOMES.length - 1) S.home++; }],
       [t('dev_day'), function () { S.played += 24 * L.HOUR; }],
-      [t('dev_strikes'), function () { S.effects = S.effects.filter(function (e) { return e.type !== 'strike'; }); }],
       [t('dev_comments'), function () { var v = S.videos.filter(function (x) { return x.ch === S.active; }).pop(); if (!v) return; for (var i = 0; i < 5; i++) S.comments.push({ id: S.nextCid++, vid: v.id, ch: v.ch, kind: ['pos', 'q', 'hate'][i % 3], pick: Math.floor(Math.random() * 1000), t: S.played }); }],
       [t('dev_event'), function () { if (!S.event) { S.event = L.makeEvent(S, Math.random); hide('devBox'); } }],
       [t('dev_second'), function () { S.channels[0].subs = Math.max(S.channels[0].subs, L.SECOND_CHANNEL_AT); }]
@@ -783,36 +797,69 @@ function openDev() {
   show('devBox');
 }
 
-/* ---------- Холст и главный цикл ---------- */
-var cv = $('cv'), ctx = cv.getContext('2d');
+/* ---------- Скорость времени (открывается с 1000 подписчиков) ---------- */
+function renderSpeed() {
+  var unlocked = S.speedUnlocked;
+  L.SPEEDS.forEach(function (v) {
+    var b = $('spd-' + v); if (!b) return;
+    b.setAttribute('aria-pressed', S.speed === v); b.disabled = v > 1 && !unlocked;
+    b.title = v > 1 && !unlocked ? t('speed_locked', { n: fmtFull(L.SPEED_AT) }) : t('speed_' + v);
+  });
+  $('speedLock').hidden = unlocked;
+}
+L.SPEEDS.forEach(function (v) {
+  $('spd-' + v).addEventListener('click', function () {
+    if (L.setSpeed(S, v)) { A.play('ui'); renderSpeed(); save(); }
+    else toast(t('speed_locked', { n: fmtFull(L.SPEED_AT) }));
+  });
+});
+
+/* ---------- Холст: 3D-квартира, а если WebGL недоступен — 2D ---------- */
+var cv = $('cv'), ctx = null, use3d = !!(window.Room3D && window.Room3D.init(cv));
+if (!use3d) ctx = cv.getContext('2d');
 function resize() {
   var r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (use3d) { window.Room3D.resize(Math.max(1, r.width), Math.max(1, r.height)); return; }
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
   ctx.setTransform(cv.width / window.Room.W, 0, 0, cv.height / window.Room.H, 0, 0);
 }
 window.addEventListener('resize', resize);
+$('roomHint').hidden = !use3d;
 
 var last = performance.now(), uiTimer = 0, saveTimer = 0, chTimer = 0;
 function frame(ts) {
   var dt = Math.min(0.25, (ts - last) / 1000); last = ts; now += dt;
   var running = slot && !paused();
-  if (running) { if ($('moveBox').hidden) handle(L.tick(S, dt * timeScale, Math.random)); else updateMove(); }
+  if (running) { if ($('moveBox').hidden) handle(L.tick(S, dt * (S.speed || 1) * timeScale, Math.random)); else updateMove(); }
   if (S.event && !$('evBox').hidden) updateEventButtons();
   uiTimer += dt; saveTimer += dt; chTimer += dt;
-  if (uiTimer > 0.15 && slot) { uiTimer = 0; renderAll(); renderTut(); tickCommentTimers(); }
+  if (uiTimer > 0.15 && slot) { uiTimer = 0; renderAll(); renderTut(); tickCommentTimers(); renderSpeed(); }
   if (chTimer > 2 && shopTab === 'channel' && $('vidsBox').hidden && slot) { chTimer = 0; renderChannelPage(); }
   if (saveTimer > 5 && running) { saveTimer = 0; save(); }
+  var ch = S.channels.length ? C() : null;
   var selfRec = now - lastClick.rec < 0.6, selfEdit = now - lastClick.edit < 0.6, selfUp = now - lastClick.up < 0.6;
   var lastSelf = Math.max(lastClick.rec, lastClick.edit, lastClick.up);
-  window.Room.draw(ctx, S, L, now, {
+  var opt = ch ? {
     selfDesk: (selfEdit || selfUp) && lastClick.rec < lastSelf,
-    recording: !S.job.active && (selfRec || S.staff.op > 0),
-    editing: !S.job.active && (selfEdit || (S.staff.ed > 0 && S.raw.length > 0)),
-    uploading: !S.job.active && (selfUp || (S.staff.mg > 0 && S.edited.length > 0)),
-    edOnline: S.staff.ed > 0, upProgress: S.work.up / L.workNeed(S, 'up'), sinceUpload: now - lastPublish,
+    recording: !S.job.active && !ch.banned && (selfRec || (ch.staff.op.n > 0 && L.hasGear(ch, 'rec'))),
+    editing: !S.job.active && (selfEdit || (ch.staff.ed.n > 0 && ch.raw.length > 0)),
+    uploading: !S.job.active && (selfUp || (ch.staff.mg.n > 0 && ch.edited.length > 0)),
+    edOnline: ch.staff.ed.n > 0, upProgress: ch.work.up / L.workNeed(S, 'up'), sinceUpload: now - lastPublish,
     atJob: S.job.active, jobLabel: settings.lang === 'ru' ? 'Ушёл на работу' : 'At work'
-  });
+  } : {};
+  $('recBadge').hidden = !opt.recording || opt.atJob;
+  $('jobBadge').hidden = !opt.atJob; if (opt.atJob) $('jobBadge').textContent = t('at_job');
+  if (use3d) window.Room3D.draw(S, L, now, opt);
+  else if (ch) window.Room.draw(ctx, S, adapt2d(), now, opt);
   requestAnimationFrame(frame);
+}
+// 2D-комната ждёт старый формат состояния (техника и команда общие) — подставляем данные текущего канала
+function adapt2d() {
+  var ch = C(), shim = Object.create(L);
+  shim.quality = function () { return L.quality(S); };
+  S.gear = {}; L.GEAR_IDS.forEach(function (k) { S.gear[k] = Math.max(0, ch.gear[k]); });
+  S.staff = { op: ch.staff.op.n, ed: ch.staff.ed.n, mg: ch.staff.mg.n }; S.raw = ch.raw; S.edited = ch.edited; S.work = ch.work;
+  return shim;
 }
 document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
 window.addEventListener('beforeunload', save);

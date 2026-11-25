@@ -167,8 +167,7 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 
 /* Страница канала */
 .chpage { display: grid; gap: 10px; }
-.banner { height: 54px; border: 2.5px solid var(--line); border-radius: 12px; position: relative; overflow: hidden; }
-.banner::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.35) 0 10px, transparent 10px 22px); }
+.banner { height: 74px; border: 2.5px solid var(--line); border-radius: 12px; position: relative; overflow: hidden; }
 .chhead { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 12px; align-items: center; margin-top: -30px; padding: 0 6px; position: relative; z-index: 1; }
 .avatar { width: 60px; height: 60px; border-radius: 50%; border: 3px solid var(--line); display: grid; place-items: center; }
 .avatar svg { width: 34px; height: 34px; }
@@ -294,10 +293,10 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .namein:focus { outline: 3px solid var(--grape); outline-offset: 2px; }
 .sugg { display: flex; gap: 6px; flex-wrap: wrap; }
 .sugg button { font: 700 13px var(--display); border: 2px solid var(--line); border-radius: 999px; padding: 4px 10px; background: var(--bg); cursor: pointer; }
-.sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.sgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 560px) { .sgrid { grid-template-columns: minmax(0, 1fr); } }
 .scard { border: 2.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); cursor: pointer; padding: 0; text-align: left; display: grid; }
-.scard .sb { height: 52px; border-bottom: 2.5px solid var(--line); }
+.scard .sb { height: 72px; border-bottom: 2.5px solid var(--line); }
 .scard .sh { display: flex; gap: 8px; align-items: center; padding: 8px 10px; font: 700 14px var(--display); min-width: 0; }
 .scard .sh span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scard .av { width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid var(--line); display: grid; place-items: center; flex: none; margin-top: -24px; }
@@ -357,6 +356,27 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
 .cm.ign { opacity: .6; }
 .cm.ign .row { display: none; }
 
+/* Скорость времени */
+.speed { display: flex; align-items: center; border: 2.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); box-shadow: 0 3px 0 var(--line); position: relative; }
+.spd { font: 800 12px var(--display); padding: 0 10px; height: 35px; border: 0; border-right: 2px solid var(--muted); background: var(--card); cursor: pointer; letter-spacing: -2px; }
+.spd:last-of-type { border-right: 0; }
+.spd[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.spd:disabled { color: #b6bccb; cursor: not-allowed; }
+.lockico { position: absolute; right: -7px; top: -9px; line-height: 0; }
+/* Значки поверх комнаты */
+.rbadge { position: absolute; top: 10px; left: 10px; font: 800 13px var(--display); background: #fff; border: 2.5px solid var(--line); border-radius: 999px; padding: 3px 11px; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.rbadge.rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--rec); animation: blink 1s steps(2) infinite; }
+.rbadge.job { background: var(--sun); }
+@keyframes blink { 50% { opacity: .25; } }
+.roomhint { position: absolute; right: 10px; top: 10px; font: 700 11px var(--body); color: var(--ink-soft); background: rgba(255,255,255,.75); border-radius: 999px; padding: 2px 8px; pointer-events: none; }
+.room canvas { cursor: grab; touch-action: pan-y; }
+.chan.banned { opacity: .7; text-decoration: line-through; }
+.thumb .tico { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; }
+.thumb .tico svg { width: 18px; height: 18px; }
+.btns { display: grid; gap: 6px; justify-items: end; }
+.buy.alt { background: #e4dfff; }
+@media (max-width: 480px) { .item { grid-template-columns: 44px minmax(0, 1fr); } .item .btns { grid-column: 1 / -1; grid-auto-flow: column; justify-content: end; } }
+
 /* Обучение — плашка над игрой, ничего не закрывает */
 .tutbar { padding: 12px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #fff7dc; }
 .tutnum { font: 800 12px var(--display); background: var(--ink); color: #fff; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
@@ -381,6 +401,7 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
     <h1 class="logo"><i aria-hidden="true"></i><span id="logoTxt">ЮТУБЕРЫ</span></h1>
     <nav class="chans" id="chans"></nav>
     <div class="right-top">
+      <div class="speed" id="speedBox"><button type="button" id="spd-1" class="spd">▶</button><button type="button" id="spd-3" class="spd">▶▶</button><button type="button" id="spd-10" class="spd">▶▶▶</button><span id="speedLock" class="lockico" aria-hidden="true"><svg viewBox="0 0 16 16" width="15" height="15"><rect x="2.5" y="7" width="11" height="8" rx="2" fill="#ffc23d" stroke="#1f2338" stroke-width="1.6"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="#1f2338" stroke-width="1.6"/></svg></span></div>
       <div class="clock" id="clock"></div>
       <button class="ibtn" id="sfxBtn" type="button" aria-pressed="true"></button>
       <button class="ibtn" id="musicBtn" type="button" aria-pressed="true"></button>
@@ -400,6 +421,9 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
         <canvas id="cv"></canvas>
         <div class="floaters" id="floaters"></div>
         <div class="fx" id="fx"></div>
+        <div class="rbadge rec" id="recBadge" hidden><i></i>REC</div>
+        <div class="rbadge job" id="jobBadge" hidden></div>
+        <div class="roomhint" id="roomHint" data-t="room_hint" hidden></div>
       </div>
       <div class="panel job" id="job">
         <div class="ico" id="jobIco"></div>
@@ -621,11 +645,14 @@ textarea { width: 100%; font: 600 12px ui-monospace, Menlo, Consolas, monospace;
 
 <div class="toast" id="toast" hidden></div>
 
+<script src="vendor/three.min.js"></script>
 <script src="texts.js"></script>
 <script src="titles.js"></script>
 <script src="sha.js"></script>
 <script src="logic.js"></script>
 <script src="audio.js"></script>
 <script src="icons.js"></script>
+<script src="banners.js"></script>
 <script src="room.js"></script>
+<script src="room3d.js"></script>
 <script src="game.js"></script>

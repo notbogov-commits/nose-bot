@@ -73,7 +73,7 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .col { display: grid; gap: 14px; min-width: 0; }
 
 /* Квартира */
-.room { position: relative; overflow: hidden; aspect-ratio: 2 / 1; max-width: 100%; background: #dfe7d8; }
+.room { position: relative; overflow: hidden; aspect-ratio: 64 / 41; max-width: 100%; background: #eef3f8; }
 .room canvas { width: 100%; height: 100%; display: block; }
 .floaters { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .floater { position: absolute; font: 800 14px var(--display); white-space: nowrap; background: #fff; border: 2.5px solid var(--line); border-radius: 999px; padding: 2px 10px; animation: floatUp 1.8s ease-out forwards; }
@@ -97,6 +97,14 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .job.quiet { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 14px; }
 .job.quiet .ico, .job.quiet p.why { display: none; }
 @media (max-width: 480px) { .job { grid-template-columns: 44px minmax(0, 1fr); } .job .jbtn { grid-column: 1 / -1; } .job.quiet { grid-template-columns: minmax(0, 1fr); } .job.quiet .jbtn { grid-column: auto; } }
+
+/* Формат видео */
+.fmt { padding: 10px 12px; display: grid; gap: 8px; }
+.fmt-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.fbtn { font: 700 14px var(--display); padding: 8px 6px; border: 2.5px solid var(--line); border-radius: 10px; background: var(--bg); cursor: pointer; }
+.fbtn[aria-pressed="true"] { background: var(--ink); color: #fff; box-shadow: 0 3px 0 var(--sun); }
+.fmt small { font-size: 12.5px; color: var(--ink-soft); }
+.jbtn.ghost { background: var(--card); }
 
 /* Этапы */
 .stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -238,7 +246,35 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .opt:hover:not(:disabled) { background: #fffbe8; }
 .opt:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
 .opt:disabled { opacity: .45; cursor: not-allowed; }
-.evfoot { padding: 4px 18px 16px; text-align: center; font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+.evfoot { padding: 4px 18px 16px; text-align: center; font-size: 12px; color: var(--ink-soft); font-weight: 700; display: grid; gap: 6px; justify-items: center; }
+.evlock { width: 160px; height: 6px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+.evlock div { height: 100%; background: var(--grape); width: 0; }
+
+/* Все видео */
+.vbig { max-width: 860px; width: 100%; padding: 18px; display: grid; gap: 12px; max-height: calc(100vh - 32px); overflow: hidden; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.vbig h2 { margin: 0; font: 800 24px var(--display); }
+.vscroll { overflow-y: auto; display: grid; gap: 10px; align-content: start; padding-right: 4px; }
+.vcard { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; border: 2.5px solid var(--line); border-radius: 12px; padding: 10px; }
+.vcard .thumb { width: 150px; }
+.vcard b { font: 700 15px/1.25 var(--display); }
+.vstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin-top: 8px; }
+.vstats div { background: var(--bg); border: 2px solid var(--line); border-radius: 8px; padding: 3px 7px; min-width: 0; }
+.vstats span { display: block; font-size: 10.5px; font-weight: 700; color: var(--ink-soft); }
+.vstats strong { font: 700 14px var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vstats .hot strong { color: #c4453a; }
+@media (max-width: 560px) { .vcard { grid-template-columns: minmax(0, 1fr); } .vcard .thumb { width: 100%; } }
+
+/* Переезд */
+.move { max-width: 420px; width: 100%; padding: 22px; display: grid; gap: 14px; text-align: center; overflow: hidden; }
+.move h2 { margin: 0; font: 800 26px var(--display); }
+.move p { margin: 0; color: var(--ink-soft); font-weight: 700; }
+.road { position: relative; height: 70px; border-bottom: 3px solid var(--line); overflow: hidden; }
+.road::after { content: ""; position: absolute; left: 0; right: 0; bottom: 8px; height: 3px; background: repeating-linear-gradient(90deg, var(--ink) 0 18px, transparent 18px 34px); animation: roadmove .5s linear infinite; }
+@keyframes roadmove { to { background-position: -34px 0; } }
+.truck { position: absolute; bottom: 12px; left: -90px; animation: drive 3.2s ease-in-out forwards; }
+.truck svg { width: 92px; height: 52px; display: block; }
+@keyframes drive { 0% { left: -100px; } 100% { left: calc(100% + 10px); } }
+.move .bar { --c: var(--mint); }
 
 /* Выбор темы */
 .picker { max-width: 980px; width: 100%; padding: 22px; display: grid; gap: 14px; }
@@ -254,6 +290,19 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 .tcard[aria-pressed="true"] { background: #fff0c2; box-shadow: 0 4px 0 var(--line); transform: translateY(-2px); }
 .tcard:disabled { opacity: .4; cursor: not-allowed; }
 .picker .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.namein { font: 700 20px var(--display); padding: 12px 14px; border: 3px solid var(--line); border-radius: 12px; width: 100%; background: var(--card); color: var(--ink); }
+.namein:focus { outline: 3px solid var(--grape); outline-offset: 2px; }
+.sugg { display: flex; gap: 6px; flex-wrap: wrap; }
+.sugg button { font: 700 13px var(--display); border: 2px solid var(--line); border-radius: 999px; padding: 4px 10px; background: var(--bg); cursor: pointer; }
+.sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .sgrid { grid-template-columns: minmax(0, 1fr); } }
+.scard { border: 2.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); cursor: pointer; padding: 0; text-align: left; display: grid; }
+.scard .sb { height: 52px; border-bottom: 2.5px solid var(--line); }
+.scard .sh { display: flex; gap: 8px; align-items: center; padding: 8px 10px; font: 700 14px var(--display); min-width: 0; }
+.scard .sh span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scard .av { width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid var(--line); display: grid; place-items: center; flex: none; margin-top: -24px; }
+.scard .av svg { width: 20px; height: 20px; }
+.scard[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--sun), 0 4px 0 var(--line); }
 
 /* Обучение */
 .tip { position: fixed; z-index: 15; max-width: min(320px, calc(100vw - 32px)); padding: 12px 14px; display: grid; gap: 8px; background: var(--ink); color: #fff; border-radius: 14px; border: 3px solid var(--sun); box-shadow: 0 5px 0 rgba(31,35,56,.35); font-weight: 700; animation: pop .3s ease-out; }
@@ -289,7 +338,16 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
       <div class="panel job" id="job">
         <div class="ico" id="jobIco"></div>
         <div><b id="jobH"></b><p class="why" id="jobP"></p><div class="bar" id="jobBarWrap" hidden><div id="jobBar"></div></div></div>
-        <button class="jbtn" id="jobBtn" type="button"></button>
+        <button class="jbtn ghost" id="jobBtn" type="button"></button>
+      </div>
+      <div class="panel fmt" id="fmtPanel">
+        <div class="label" data-t="fmt_h"></div>
+        <div class="fmt-row">
+          <button class="fbtn" type="button" id="fmt-short" data-t="fmt_short"></button>
+          <button class="fbtn" type="button" id="fmt-video" data-t="fmt_video"></button>
+          <button class="fbtn" type="button" id="fmt-long" data-t="fmt_long"></button>
+        </div>
+        <small id="fmtDesc"></small>
       </div>
       <div class="stages">
         <div class="panel stage" data-stage="rec">
@@ -346,12 +404,26 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 
 <div class="overlay" id="pickBox" hidden>
   <div class="panel picker">
-    <h2 id="pickH"></h2>
-    <p id="pickP"></p>
-    <div class="tgrid" id="tgrid"></div>
-    <div class="row">
-      <button class="btn" id="pickCancel" type="button" data-t="pick_cancel"></button>
-      <button class="btn primary" id="pickGo" type="button" data-t="pick_btn" disabled></button>
+    <div id="pickStep1" style="display:grid;gap:14px">
+      <h2 id="pickH"></h2>
+      <p id="pickP" style="margin:0;color:var(--ink-soft)"></p>
+      <div class="tgrid" id="tgrid"></div>
+      <div class="row">
+        <button class="btn" id="pickCancel" type="button" data-t="pick_cancel"></button>
+        <button class="btn primary" id="pickNext" type="button" data-t="pick_next" disabled></button>
+      </div>
+    </div>
+    <div id="pickStep2" style="display:grid;gap:14px" hidden>
+      <h2 data-t="name_h"></h2>
+      <p style="margin:0;color:var(--ink-soft)" data-t="name_p"></p>
+      <input class="namein" id="nameIn" type="text" maxlength="30" autocomplete="off">
+      <div class="sugg" id="sugg"></div>
+      <div class="label" data-t="design_h"></div>
+      <div class="sgrid" id="sgrid"></div>
+      <div class="row">
+        <button class="btn" id="pickBack" type="button" data-t="pick_back"></button>
+        <button class="btn primary" id="pickGo" type="button" data-t="pick_btn"></button>
+      </div>
     </div>
   </div>
 </div>
@@ -385,6 +457,37 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
   </div>
 </div>
 
+<div class="overlay" id="quitBox" hidden>
+  <div class="panel modal">
+    <h2 data-t="job_quit_h"></h2>
+    <p data-t="job_quit_p"></p>
+    <p id="quitWarn" style="color:#c4453a;font-weight:700" data-t="job_quit_warn"></p>
+    <div class="row">
+      <button class="btn" id="quitNo" type="button" data-t="job_quit_no"></button>
+      <button class="btn primary" id="quitYes" type="button" data-t="job_quit_yes"></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="vidsBox" hidden>
+  <div class="panel vbig">
+    <h2 id="vidsH"></h2>
+    <p class="note" id="vidsNote"></p>
+    <div class="vscroll" id="vidsList"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" id="vidsClose" type="button" data-t="vids_close"></button></div>
+  </div>
+</div>
+
+<div class="overlay" id="moveBox" hidden>
+  <div class="panel move">
+    <h2 data-t="move_h"></h2>
+    <p id="moveP"></p>
+    <div class="road"><div class="truck"><svg viewBox="0 0 92 52" fill="none" stroke="#1f2338" stroke-width="3" stroke-linejoin="round"><rect x="4" y="6" width="52" height="32" rx="4" fill="#ffc23d"/><path d="M56 16h18l12 12v10H56z" fill="#ff5d4f"/><path d="M62 20h10l7 8H62z" fill="#9fd8ff"/><rect x="12" y="14" width="14" height="12" rx="2" fill="#e9c79f"/><rect x="30" y="14" width="14" height="12" rx="2" fill="#e9c79f"/><circle cx="20" cy="42" r="7" fill="#2c3150"/><circle cx="72" cy="42" r="7" fill="#2c3150"/></svg></div></div>
+    <div class="bar"><div id="moveBar"></div></div>
+    <p id="moveStep"></p>
+  </div>
+</div>
+
 <div class="tip" id="tip" hidden>
   <div id="tipTxt"></div>
   <div class="row"><button class="skip" id="tipSkip" type="button" data-t="tut_skip"></button><button id="tipOk" type="button" data-t="tut_ok"></button></div>
@@ -392,6 +495,7 @@ button:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
 <div class="toast" id="toast" hidden></div>
 
 <script src="texts.js"></script>
+<script src="titles.js"></script>
 <script src="logic.js"></script>
 <script src="audio.js"></script>
 <script src="icons.js"></script>

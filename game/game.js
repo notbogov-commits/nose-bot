@@ -1,8 +1,8 @@
 // ЮТУБЕРЫ — интерфейс: связывает логику, тексты, звук и отрисовку квартиры.
 (function () {
 'use strict';
-var L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
-var SAVE_KEY = 'youtubers_save_v3', SET_KEY = 'youtubers_settings';
+var TITLES = window.TITLES, L = window.Logic, A = window.GameAudio, TX = window.TEXTS, ICON = window.ICON, THEME_ICON = window.THEME_ICON, THEME_TINT = window.THEME_TINT, EVENT_TINT = window.EVENT_TINT;
+var SAVE_KEY = 'youtubers_save_v4', SET_KEY = 'youtubers_settings';
 var STAGES = ['rec', 'edit', 'up'];
 var STAFF_OF = { rec: 'op', edit: 'ed', up: 'mg' };
 var TABS = ['gear', 'team', 'home', 'channel', 'comments'];
@@ -52,14 +52,25 @@ function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } cat
 S = load();
 if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(function () { return { state: S }; });
 
-var feedLines = [], lastClick = { rec: -9, edit: -9, up: -9 }, now = 0, shopTab = 'gear', videoLimit = 20;
+var feedLines = [], lastClick = { rec: -9, edit: -9, up: -9 }, now = 0, shopTab = 'gear', lastPublish = -9, evShownAt = 0, movingUntil = 0;
 
 function videoTitle(v) {
   var ch = S.channels[v.ch]; if (!ch) return '…';
-  var list = th(ch.theme).titles, base = list[v.n % list.length], part = Math.floor(v.n / list.length) + 1;
-  return part > 1 ? t('part', { title: base, n: part }) : base;
+  var G = TITLES[settings.lang][ch.theme], tt = v.tt || [v.n, v.n * 3, v.n * 7, v.n * 11];
+  var tpl = G[tt[0] % G.length], pick = function (arr, k) { return arr && arr.length ? arr[tt[k] % arr.length] : ''; };
+  var s = tpl[0].split('{a}').join(pick(tpl[1], 1)).split('{b}').join(pick(tpl[2], 2)).split('{n}').join(pick(TITLES.nums, 3));
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function chName(i) { var ch = S.channels[i]; return ch ? th(ch.theme).name : ''; }
+function chName(i) { var ch = S.channels[i]; return ch ? (ch.name || th(ch.theme).name) : ''; }
+function chStyle(ch) { return TITLES.styles[ch.theme][ch.style || 0]; }
+function patternCss(st) {
+  var a = st[0], b = st[1];
+  if (st[3] === 'grid') return 'background:' + a + ';background-image:linear-gradient(' + b + '33 2px,transparent 2px),linear-gradient(90deg,' + b + '33 2px,transparent 2px);background-size:16px 16px';
+  if (st[3] === 'dots') return 'background:' + a + ';background-image:radial-gradient(' + b + '66 3px,transparent 3.5px);background-size:16px 16px';
+  if (st[3] === 'zig') return 'background:' + a + ';background-image:linear-gradient(135deg,' + b + '55 25%,transparent 25%),linear-gradient(225deg,' + b + '55 25%,transparent 25%);background-size:20px 20px';
+  return 'background:repeating-linear-gradient(135deg,' + a + ' 0 12px,' + b + ' 12px 18px)';
+}
+function fmtLen(sec) { var m = Math.floor(sec / 60); return m + ':' + ('0' + (sec % 60)).slice(-2); }
 
 /* ---------- Мелочи ---------- */
 var toastTimer;
@@ -94,9 +105,7 @@ function renderToggles() {
   $('mRu').setAttribute('aria-pressed', settings.lang === 'ru'); $('mEn').setAttribute('aria-pressed', settings.lang === 'en');
 }
 function renderStageLabels() {
-  if (!S.channels.length) return;
-  var tt = th(L.channel(S).theme);
-  STAGES.forEach(function (st) { $('lbl-' + st).textContent = tt[st]; $('txt-' + st).textContent = tt[st + '_btn']; });
+  STAGES.forEach(function (st) { $('lbl-' + st).textContent = t('st_' + st); $('txt-' + st).textContent = t('btn_' + st); });
 }
 
 /* ---------- Каналы ---------- */
@@ -104,8 +113,8 @@ function renderChans() {
   var box = $('chans'); box.innerHTML = '';
   S.channels.forEach(function (ch, i) {
     var b = document.createElement('button'); b.type = 'button'; b.className = 'chan'; b.setAttribute('aria-pressed', i === S.active);
-    b.innerHTML = '<span class="ti" style="background:' + THEME_TINT[ch.theme] + '">' + THEME_ICON[ch.theme] + '</span><span>' + esc(th(ch.theme).name) + '</span><small id="chs-' + i + '"></small>';
-    b.addEventListener('click', function () { if (S.active !== i) { S.active = i; videoLimit = 20; A.play('ui'); renderChans(); renderStageLabels(); buildTab(); renderAll(); save(); } });
+    b.innerHTML = '<span class="ti" style="background:' + chStyle(ch)[2] + '">' + THEME_ICON[ch.theme] + '</span><span>' + esc(chName(i)) + '</span><small id="chs-' + i + '"></small>';
+    b.addEventListener('click', function () { if (S.active !== i) { S.active = i; A.play('ui'); renderChans(); renderStageLabels(); buildTab(); renderAll(); save(); } });
     box.appendChild(b);
   });
   if (S.channels.length === 1) {
@@ -123,32 +132,59 @@ function updateChanSubs() {
   var g = $('secondBtn'); if (g && g.disabled && L.canOpenSecond(S)) renderChans();
 }
 
-/* ---------- Выбор темы ---------- */
-var pickMode = 'first', picked = null;
+/* ---------- Создание канала: тема → название и оформление ---------- */
+var pickMode = 'first', picked = null, pickedStyle = 0;
 function openPicker(mode) {
-  pickMode = mode; picked = null;
+  pickMode = mode; picked = null; pickedStyle = 0;
+  $('pickStep1').hidden = false; $('pickStep2').hidden = true;
   $('pickH').textContent = t(mode === 'first' ? 'pick_h' : 'pick_second_h');
   $('pickP').textContent = mode === 'first' ? t('pick_p', { n: fmt(L.SECOND_CHANNEL_AT) }) : t('pick_second_p');
-  $('pickCancel').hidden = mode === 'first'; $('pickGo').disabled = true;
+  $('pickCancel').hidden = mode === 'first'; $('pickNext').disabled = true;
   var grid = $('tgrid'); grid.innerHTML = '';
   L.THEME_IDS.forEach(function (id) {
     var tt = th(id), b = document.createElement('button');
     b.type = 'button'; b.className = 'tcard'; b.setAttribute('aria-pressed', 'false');
     b.disabled = mode === 'second' && S.channels[0] && S.channels[0].theme === id;
-    b.innerHTML = '<span class="ti" style="background:' + THEME_TINT[id] + '">' + THEME_ICON[id] + '</span><b>' + esc(tt.name) + '</b><span><em>+</em> ' + esc(tt.plus) + '</span><span><em>−</em> ' + esc(tt.minus) + '</span>';
+    var r = L.THEMES[id].rpm;
+    b.innerHTML = '<span class="ti" style="background:' + THEME_TINT[id] + '">' + THEME_ICON[id] + '</span><b>' + esc(tt.name) + '</b><span><em>+</em> ' + esc(tt.plus) + '</span><span><em>−</em> ' + esc(tt.minus) + '</span><span><em>RPM</em> ~$' + dec(r) + '</span>';
     b.addEventListener('click', function () {
       picked = id; A.unlock(); A.play('ui');
       grid.querySelectorAll('.tcard').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
-      $('pickGo').disabled = false;
+      $('pickNext').disabled = false;
     });
     grid.appendChild(b);
   });
   $('pickBox').hidden = false;
 }
+function renderPickStep2() {
+  var names = TITLES.names[settings.lang][picked], box = $('sugg'); box.innerHTML = '';
+  names.forEach(function (n) { var b = document.createElement('button'); b.type = 'button'; b.textContent = n; b.addEventListener('click', function () { $('nameIn').value = n; renderStyles(); A.play('ui'); }); box.appendChild(b); });
+  if (!$('nameIn').value) $('nameIn').value = names[Math.floor(Math.random() * names.length)];
+  renderStyles();
+}
+function renderStyles() {
+  var g = $('sgrid'); g.innerHTML = '';
+  TITLES.styles[picked].forEach(function (st, i) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'scard'; b.setAttribute('aria-pressed', i === pickedStyle);
+    b.innerHTML = '<div class="sb" style="' + patternCss(st) + '"></div><div class="sh"><span class="av" style="background:' + st[2] + '">' + THEME_ICON[picked] + '</span><span>' + esc($('nameIn').value || t('name_ph')) + '</span></div>';
+    b.setAttribute('aria-label', t('style_n', { n: i + 1 }));
+    b.addEventListener('click', function () { pickedStyle = i; A.play('ui'); renderStyles(); });
+    g.appendChild(b);
+  });
+}
+$('pickNext').addEventListener('click', function () {
+  if (!picked) return;
+  $('nameIn').value = ''; $('nameIn').placeholder = t('name_ph');
+  $('pickStep1').hidden = true; $('pickStep2').hidden = false; renderPickStep2(); A.play('ui');
+  setTimeout(function () { $('nameIn').focus(); $('nameIn').select(); }, 50);
+});
+$('nameIn').addEventListener('input', function () { renderStyles(); });
+$('pickBack').addEventListener('click', function () { $('pickStep1').hidden = false; $('pickStep2').hidden = true; });
 $('pickGo').addEventListener('click', function () {
-  if (!picked || !L.startChannel(S, picked)) return;
+  var name = $('nameIn').value.trim() || TITLES.names[settings.lang][picked][0];
+  if (!picked || !L.startChannel(S, picked, name, pickedStyle)) return;
   $('pickBox').hidden = true; if (S.tut === 0) S.tut = 1;
-  A.play('good'); save(); videoLimit = 20;
+  A.play('good'); save();
   renderChans(); renderStageLabels(); buildTab(); renderAll();
 });
 $('pickCancel').addEventListener('click', function () { $('pickBox').hidden = true; });
@@ -161,7 +197,7 @@ function handle(events) {
       addFeed(t(key, { title: esc(videoTitle(e.video)), v: '<b>' + fmt(e.views) + '</b>', s: fmt(e.subs) }), e.viral ? 'viral' : '');
       floater('+' + fmt(e.views) + ' ' + t('unit_views'), e.viral ? 'viral' : '');
       if (e.money > 0) setTimeout(function () { floater('+' + fmtMoney(e.money)); }, 250);
-      A.play(e.viral ? 'viral' : 'publish');
+      A.play(e.viral ? 'viral' : 'publish'); lastPublish = now;
       if (shopTab === 'channel') buildTab();
     } else if (e.type === 'recorded' || e.type === 'edited') A.play('step');
     else if (e.type === 'comment') { if (shopTab === 'comments') buildTab(); }
@@ -169,6 +205,7 @@ function handle(events) {
     else if (e.type === 'second_ready') { toast(t('second_ready')); addFeed('<b>' + esc(t('second_ready')) + '</b>', 'ms'); renderChans(); A.play('good'); }
     else if (e.type === 'event') { renderEventModal(true); A.play(e.event.kind === 'monetized' ? 'milestone' : 'card'); }
     else if (e.type === 'auto_event') { if (e.result) addFeed(esc(t('auto_event', { r: resultText(e.result, e.event) }))); }
+    else if (e.type === 'shift_start') { addFeed(esc(t('shift_start'))); A.play('ui'); }
     else if (e.type === 'shift_done') { toast(t('job_done', { pay: fmtMoney(e.pay) })); addFeed(esc(t('job_done', { pay: fmtMoney(e.pay) }))); floater('+' + fmtMoney(e.pay)); A.play('buy'); }
     else if (e.type === 'effect_end') { if (e.effect === 'strike' || e.effect === 'broken') addFeed(esc(t('effect_end_' + e.effect))); }
     else if (e.type === 'won') {
@@ -202,19 +239,23 @@ function renderEventModal(force) {
     var hint = t('hint_' + k + '_' + o, v);
     html += '<button class="opt" type="button" data-opt="' + o + '"><b>' + esc(t('opt_' + k + '_' + o, v)) + '</b>' + (hint ? '<span>' + esc(hint) + '</span>' : '') + '</button>';
   });
-  html += '</div><div class="evfoot">' + esc(t('ev_paused')) + '</div>';
+  html += '</div><div class="evfoot"><span id="evFootTxt">' + esc(t('ev_wait')) + '</span><div class="evlock"><div id="evLock"></div></div></div>';
   $('evCard').innerHTML = html;
   $('evCard').querySelectorAll('.opt').forEach(function (b) { b.addEventListener('click', function () { answer(b.getAttribute('data-opt')); }); });
+  evShownAt = performance.now();
   updateEventButtons();
   box.hidden = false; hideTip();
-  var first = $('evCard').querySelector('.opt:not(:disabled)'); if (first) first.focus({ preventScroll: true });
 }
+var EV_LOCK = 1500;
 function updateEventButtons() {
   if (!S.event) return;
-  $('evCard').querySelectorAll('.opt').forEach(function (b) { b.disabled = !L.canChoose(S, S.event, b.getAttribute('data-opt')); });
+  var waited = performance.now() - evShownAt, locked = waited < EV_LOCK;
+  $('evCard').querySelectorAll('.opt').forEach(function (b) { b.disabled = locked || !L.canChoose(S, S.event, b.getAttribute('data-opt')); });
+  var lk = $('evLock'); if (lk) { lk.style.width = Math.min(100, waited / EV_LOCK * 100) + '%'; lk.parentNode.hidden = !locked; }
+  var ft = $('evFootTxt'); if (ft) ft.textContent = locked ? t('ev_wait') : t('ev_paused');
 }
 function answer(opt) {
-  var ev = S.event; if (!ev) return;
+  var ev = S.event; if (!ev || performance.now() - evShownAt < EV_LOCK) return;
   var res = L.resolveEvent(S, opt, Math.random); if (!res) return;
   var txt = resultText(res, ev);
   var bad = (res.kind === 'strike' && opt === 'ignore') || (res.kind === 'drama' && opt === 'attack') || (res.kind === 'broken' && opt === 'keep');
@@ -236,13 +277,17 @@ function work(stage) {
 STAGES.forEach(function (st) { $('btn-' + st).addEventListener('click', function () { work(st); }); });
 document.addEventListener('keydown', function (e) {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (!$('pickBox').hidden || !$('menuBox').hidden || !$('evBox').hidden) return;
+  if (['pickBox', 'menuBox', 'evBox', 'quitBox', 'vidsBox', 'moveBox'].some(function (id) { return !$(id).hidden; })) return;
   var map = { '1': 'rec', '2': 'edit', '3': 'up' };
   if (map[e.key]) { A.unlock(); work(map[e.key]); var b = $('btn-' + map[e.key]); b.style.transform = 'translateY(3px)'; setTimeout(function () { b.style.transform = ''; }, 80); }
 });
 document.addEventListener('pointerdown', function () { A.unlock(); }, { passive: true });
 
-$('jobBtn').addEventListener('click', function () { if (L.startShift(S)) { A.play('ui'); renderAll(); save(); } });
+$('jobBtn').addEventListener('click', function () { if (!S.job.employed) return; $('quitWarn').hidden = !!(S.channels.length && S.channels.some(function (c) { return c.monetized; })); $('quitBox').hidden = false; A.play('card'); });
+$('quitNo').addEventListener('click', function () { $('quitBox').hidden = true; });
+$('quitYes').addEventListener('click', function () { if (L.quitJob(S)) { $('quitBox').hidden = true; toast(t('job_quit_done')); addFeed('<b>' + esc(t('job_quit_done')) + '</b>', 'ms'); A.play('milestone'); renderAll(); save(); } });
+L.FORMAT_IDS.forEach(function (f) { $('fmt-' + f).addEventListener('click', function () { if (L.setFormat(S, f)) { A.play('ui'); renderFormat(); save(); } }); });
+$('vidsClose').addEventListener('click', function () { $('vidsBox').hidden = true; });
 $('sfxBtn').addEventListener('click', function () { settings.sfx = !settings.sfx; A.setSfx(settings.sfx); renderToggles(); saveSettings(); A.play('ui'); });
 $('musicBtn').addEventListener('click', function () { settings.music = !settings.music; A.setMusic(settings.music); renderToggles(); saveSettings(); });
 $('menuBtn').addEventListener('click', function () { $('mConfirm').hidden = true; $('menuBox').hidden = false; A.play('ui'); });
@@ -264,7 +309,7 @@ $('winGo').addEventListener('click', function () { $('winBox').hidden = true; })
 TABS.forEach(function (k) { $('tab-' + k).addEventListener('click', function () { setTab(k); A.play('ui'); }); });
 function setTab(k) {
   if (shopTab === k) return;
-  shopTab = k; videoLimit = 20;
+  shopTab = k;
   TABS.forEach(function (x) { $('tab-' + x).setAttribute('aria-selected', x === k); });
   buildTab();
 }
@@ -300,7 +345,7 @@ function shopItems() {
         id: 'home' + i, icon: ICON.home(i), name: t(h.id), current: i === S.home, past: i < S.home,
         sub: t('home_d', { q: dec(h.q), n: i + 1 }),
         cost: i === S.home + 1 ? h.cost : null, max: i <= S.home, seen: i <= S.home + 1 || S.money >= h.cost * 0.35,
-        buy: function () { if (L.moveHome(S)) { toast(t('moved', { n: t(L.HOMES[S.home].id) })); A.play('milestone'); return true; } }
+        buy: function () { if (L.moveHome(S)) { startMove(); return true; } }
       });
     });
   }
@@ -344,6 +389,22 @@ function renderShop() {
   });
 }
 
+/* ---------- Переезд ---------- */
+var MOVE_TIME = 3200;
+function startMove() {
+  movingUntil = performance.now() + MOVE_TIME;
+  $('moveP').textContent = t('move_p', { home: t(L.HOMES[S.home].id) });
+  var tr = $('moveBox').querySelector('.truck'); tr.style.animation = 'none'; void tr.offsetWidth; tr.style.animation = '';
+  $('moveBox').hidden = false; A.play('card');
+}
+function updateMove() {
+  if ($('moveBox').hidden) return;
+  var left = movingUntil - performance.now(), p = 1 - Math.max(0, left) / MOVE_TIME, steps = T().move_steps;
+  $('moveBar').style.width = (p * 100) + '%';
+  $('moveStep').textContent = steps[Math.min(steps.length - 1, Math.floor(p * steps.length))];
+  if (left <= 0) { $('moveBox').hidden = true; toast(t('moved', { n: t(L.HOMES[S.home].id) })); addFeed('<b>' + esc(t('moved', { n: t(L.HOMES[S.home].id) })) + '</b>', 'ms'); A.play('milestone'); }
+}
+
 /* ---------- Вкладка канала (как на видеохостинге) ---------- */
 function agoText(sec) {
   var hours = Math.max(0, sec) / L.HOUR;
@@ -352,31 +413,50 @@ function agoText(sec) {
   if (hours < 24) return t('ago_h', { n: Math.floor(hours) });
   return t('ago_d', { n: Math.floor(hours / 24) });
 }
+function thumbHtml(v, ch) {
+  var st = chStyle(ch);
+  return '<div class="thumb" style="' + patternCss(st) + '">' + THEME_ICON[ch.theme] + '<small>' + (v.fmt === 'short' ? 'SHORT · ' : '') + fmtLen(v.len || 600) + '</small></div>';
+}
+function badgesHtml(v) {
+  return (!v.mon ? '<span class="nomon">' + esc(t('b_nomon')) + '</span>' : '') + (v.cut ? '<span class="cut">' + esc(t('b_cut')) + '</span>' : '') +
+    (v.viral ? '<span class="viral">' + esc(t('b_viral')) + '</span>' : '') + (v.src ? '<span class="' + v.src + '">' + esc(t('b_' + v.src)) + '</span>' : '');
+}
 function renderChannelPage() {
   var box = $('items'); if (!S.channels.length) { box.innerHTML = ''; return; }
-  var ch = L.channel(S), id = ch.theme, n = L.strikes(S);
+  var ch = L.channel(S), id = ch.theme, n = L.strikes(S), st = chStyle(ch);
   var vids = S.videos.filter(function (v) { return v.ch === S.active; }).slice().reverse();
-  var html = '<div class="chpage"><div class="banner" style="background:' + THEME_TINT[id] + '"></div>' +
-    '<div class="chhead"><div class="avatar" style="background:' + THEME_TINT[id] + '">' + THEME_ICON[id] + '</div>' +
-    '<div><h4>' + esc(th(id).name) + '</h4><p>' + esc(t('ch_subs', { n: fmt(ch.subs) })) + ' · ' + esc(t('ch_videos', { n: fmt(ch.videos) })) + ' · ' + esc(t('ch_views', { n: fmt(ch.views) })) + '</p></div></div>' +
+  var html = '<div class="chpage"><div class="banner" style="' + patternCss(st) + '"></div>' +
+    '<div class="chhead"><div class="avatar" style="background:' + st[2] + '">' + THEME_ICON[id] + '</div>' +
+    '<div><h4>' + esc(chName(S.active)) + '</h4><p>' + esc(th(id).name) + ' · ' + esc(t('ch_subs', { n: fmt(ch.subs) })) + ' · ' + esc(t('ch_videos', { n: fmt(ch.videos) })) + ' · ' + esc(t('ch_views', { n: fmt(ch.views) })) + '</p></div></div>' +
     '<div class="chmeta"><span class="' + (ch.monetized ? 'on' : '') + '">' + esc(ch.monetized ? t('mon_on') : t('mon_off', { n: fmtFull(L.MONETIZE_AT) })) + '</span>' +
+    '<span>' + esc(t('ch_earned', { n: fmtMoney(ch.earned || 0) })) + '</span>' +
     '<span class="' + (n ? 'bad' : '') + '">' + esc(t('strikes_now', { n: n, m: L.MAX_STRIKES })) + '</span>' +
     '<span>' + esc(t('trust')) + ': ' + Math.round(S.trust) + '%</span></div>' +
-    '<p class="note">' + esc(t('trust_note')) + '</p><div class="vlist">';
+    '<div class="label">' + esc(t('last3')) + '</div><div class="vlist">';
   if (!vids.length) html += '<p class="note">' + esc(t('no_videos')) + '</p>';
-  vids.slice(0, videoLimit).forEach(function (v) {
-    var views = L.videoViews(S, v), mins = 4 + (v.n * 7 % 19);
-    html += '<div class="vid"><div class="thumb" style="background:' + THEME_TINT[id] + '">' + THEME_ICON[id] + '<small>' + mins + ':' + ('0' + (v.n * 13 % 60)).slice(-2) + '</small></div><div>' +
-      '<b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(t('vid_views', { n: fmt(views) })) + ' · ' + esc(t('vid_likes', { n: fmt(views * L.likeRate(S)) })) + ' · ' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' +
-      (!v.mon ? '<span class="nomon">' + esc(t('b_nomon')) + '</span>' : '') + (v.cut ? '<span class="cut">' + esc(t('b_cut')) + '</span>' : '') +
-      (v.viral ? '<span class="viral">' + esc(t('b_viral')) + '</span>' : '') + (v.src ? '<span class="' + v.src + '">' + esc(t('b_' + v.src)) + '</span>' : '') +
-      '</div></div></div>';
+  vids.slice(0, 3).forEach(function (v) {
+    var views = L.videoViews(S, v);
+    html += '<div class="vid">' + thumbHtml(v, ch) + '<div><b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(t('vid_views', { n: fmt(views) })) + ' · ' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' + badgesHtml(v) + '</div></div></div>';
   });
   html += '</div>';
-  if (vids.length > videoLimit) html += '<button class="more" type="button" id="moreVids">' + esc(t('more')) + '</button>';
+  if (vids.length) html += '<button class="more" type="button" id="allVids">' + esc(t('all_videos', { n: fmt(ch.videos) })) + '</button>';
   html += '</div>';
   box.innerHTML = html;
-  var more = $('moreVids'); if (more) more.addEventListener('click', function () { videoLimit += 20; renderChannelPage(); });
+  var b = $('allVids'); if (b) b.addEventListener('click', function () { openAllVideos(); A.play('ui'); });
+}
+function openAllVideos() {
+  var ch = L.channel(S);
+  $('vidsH').textContent = t('vids_h', { name: chName(S.active) });
+  $('vidsNote').textContent = t('perf_note') + ' ' + t('rpm_note');
+  var vids = S.videos.filter(function (v) { return v.ch === S.active; }).slice().reverse(), html = '';
+  vids.forEach(function (v) {
+    var views = L.videoViews(S, v), cell = function (k, val, hot) { return '<div' + (hot ? ' class="hot"' : '') + '><span>' + esc(t(k)) + '</span><strong>' + val + '</strong></div>'; };
+    html += '<div class="vcard">' + thumbHtml(v, ch) + '<div><b>' + esc(videoTitle(v)) + '</b><div class="vm">' + esc(t('f_' + (v.fmt || 'video'))) + ' · ' + esc(agoText(S.played - v.t)) + '</div><div class="vbadges">' + badgesHtml(v) + '</div>' +
+      '<div class="vstats">' + cell('st_views', fmt(views)) + cell('st_earned', fmtMoney(L.videoEarned(S, v))) + cell('st_rpm', v.mon ? '$' + dec(v.rpm || 0) : '—') +
+      cell('st_likes', fmt(views * L.likeRate(S))) + cell('st_dislikes', fmt(views * L.dislikeRate(S))) + cell('st_comments', fmt(v.cm || 0)) + cell('st_perf', (v.perf || 100) + '%', (v.perf || 100) >= 300) + '</div></div></div>';
+  });
+  if (!vids.length) html = '<p class="note">' + esc(t('no_videos')) + '</p>';
+  $('vidsList').innerHTML = html; $('vidsBox').hidden = false;
 }
 
 /* ---------- Комментарии ---------- */
@@ -406,20 +486,28 @@ function renderComments() {
 
 /* ---------- Панели ---------- */
 function renderJob() {
-  var mon = S.channels.length && L.channel(S).monetized, j = S.job;
-  $('job').classList.toggle('quiet', !!mon && !j.active);
-  if (j.active) {
-    var end = L.clock({ played: j.end }), left = j.end - S.played, total = L.SHIFT_HOURS * L.HOUR;
-    $('jobH').textContent = t('job_active', { time: hhmm(end.hour, end.minute) });
-    $('jobP').textContent = t('job_note');
-    $('jobBarWrap').hidden = false; $('jobBar').style.width = (100 - left / total * 100) + '%';
-    $('jobBtn').disabled = true; $('jobBtn').textContent = fmtClock(left);
-  } else {
-    $('jobH').textContent = t('job_h');
-    $('jobP').textContent = mon ? t('job_p_mon') : t('job_p_nomon');
-    $('jobBarWrap').hidden = true;
-    $('jobBtn').disabled = !!S.event || !S.channels.length; $('jobBtn').textContent = t('job_btn', { pay: fmtMoney(L.salary(S)) });
+  var j = S.job, box = $('job');
+  box.classList.toggle('quiet', !j.employed);
+  if (!j.employed) {
+    $('jobH').textContent = t('job_free_h'); $('jobP').textContent = t('job_free_p');
+    $('jobBarWrap').hidden = true; $('jobBtn').hidden = true; return;
   }
+  $('jobBtn').hidden = false; $('jobBtn').textContent = t('job_quit'); $('jobBtn').disabled = !!S.event;
+  if (j.active) {
+    var left = j.end - S.played, total = (L.JOB_TO - L.JOB_FROM) * L.HOUR;
+    $('jobH').textContent = t('job_active', { pay: fmtMoney(L.salary(S)) });
+    $('jobP').textContent = t('job_p_emp', { pay: fmtMoney(L.salary(S)) });
+    $('jobBarWrap').hidden = false; $('jobBar').style.width = Math.max(0, 100 - left / total * 100) + '%';
+  } else {
+    $('jobH').textContent = t('job_h'); $('jobP').textContent = t('job_p_emp', { pay: fmtMoney(L.salary(S)) });
+    $('jobBarWrap').hidden = true;
+  }
+}
+function renderFormat() {
+  if (!S.channels.length) return;
+  L.FORMAT_IDS.forEach(function (f) { $('fmt-' + f).setAttribute('aria-pressed', S.format === f); });
+  var rpm = L.theme(S).rpm * L.FORMATS[S.format].rpm;
+  $('fmtDesc').textContent = t('fmt_d_' + S.format, { rpm: '$' + dec(Math.round(rpm * 100) / 100) });
 }
 function renderStages() {
   if (!S.channels.length) return;
@@ -428,13 +516,14 @@ function renderStages() {
     var ok = L.canWork(S, st); $('btn-' + st).disabled = !ok;
     var meta = [], sk = STAFF_OF[st];
     if (S.job.active) meta.push(t('at_job'));
-    else if (!L.stageOpen(S, st)) meta.push(st === 'up' && S.edited > 0 ? t('blocked', { n: L.strikes(S) }) : t(st === 'edit' ? 'need_raw' : 'need_edit'));
+    else if (!L.stageOpen(S, st)) meta.push(st === 'up' && S.edited.length > 0 ? t('blocked', { n: L.strikes(S) }) : t(st === 'edit' ? 'need_raw' : 'need_edit'));
     else meta.push(t('per_click', { n: L.power(S, st) }));
     if (S.staff[sk] > 0) meta.push(t('auto', { who: t('who_' + sk), n: dec(Math.round(L.staffRate(S, sk) * 10) / 10) }));
     $('meta-' + st).textContent = meta.join(' · ');
   });
-  $('cnt-edit').textContent = S.raw ? t('queue', { n: S.raw }) : '';
-  $('cnt-up').textContent = S.edited ? t('queue', { n: S.edited }) : '';
+  $('cnt-edit').textContent = S.raw.length ? t('queue', { n: S.raw.length }) : '';
+  $('cnt-up').textContent = S.edited.length ? t('queue', { n: S.edited.length }) : '';
+  var cf = L.itemFormat(S, 'rec'); $('cnt-rec').textContent = t('f_' + cf);
 }
 function renderFx() {
   var parts = [], n = L.strikes(S);
@@ -450,7 +539,7 @@ function renderAll() {
   var ch = L.channel(S), c = L.clock(S), day = c.hour >= 6 && c.hour < 20;
   var clockHtml = (day ? ICON.sun : ICON.moon) + '<span>' + esc(t('clock', { d: c.day, h: ('0' + c.hour).slice(-2), m: ('0' + Math.floor(c.minute / 10) * 10).slice(-2) })) + '</span>';
   if ($('clock').innerHTML !== clockHtml) $('clock').innerHTML = clockHtml;
-  $('subsLabel').textContent = t('subs') + ' · ' + th(ch.theme).name;
+  $('subsLabel').textContent = t('subs') + ' · ' + chName(S.active);
   $('subs').textContent = fmtFull(ch.subs);
   var mc = $('monChip'); mc.className = 'monchip' + (ch.monetized ? ' on' : ''); mc.textContent = ch.monetized ? t('mon_on') : t('mon_off', { n: fmt(L.MONETIZE_AT) });
   var p = Math.min(100, ch.subs / L.GOAL_SUBS * 100);
@@ -459,7 +548,7 @@ function renderAll() {
   $('money').textContent = fmtMoney(S.money); $('trust').textContent = Math.round(S.trust) + '%';
   $('quality').textContent = '×' + dec(Math.round(L.quality(S) * 10) / 10); $('videos').textContent = fmt(ch.videos);
   var cb = $('cmBadge'); cb.hidden = !S.comments.length; cb.textContent = S.comments.length > 9 ? '9+' : S.comments.length;
-  updateChanSubs(); renderJob(); renderStages(); renderShop(); renderFx(); renderEventModal(false); renderTip();
+  updateChanSubs(); renderJob(); renderFormat(); renderStages(); renderShop(); renderFx(); renderEventModal(false); renderTip();
 }
 
 /* ---------- Обучение ---------- */
@@ -473,14 +562,13 @@ function tutStep() {
   var tt = th(L.channel(S).theme), videos = L.totalVideos(S), gearSum = 0, staffSum = S.staff.op + S.staff.ed + S.staff.mg;
   L.GEAR_IDS.forEach(function (k) { gearSum += S.gear[k]; });
   switch (S.tut) {
-    case 1: return { done: S.raw > 0 || S.edited > 0 || videos > 0, el: $('btn-rec'), text: t('tut_1', { btn: tt.rec_btn }) };
-    case 2: return { done: S.edited > 0 || videos > 0, el: $('btn-edit'), text: t('tut_2', { btn: tt.edit_btn }) };
+    case 1: return { done: S.raw.length > 0 || S.edited.length > 0 || videos > 0, el: $("btn-rec"), text: t("tut_1", { btn: t("btn_rec") }) };
+    case 2: return { done: S.edited.length > 0 || videos > 0, el: $("btn-edit"), text: t("tut_2", { btn: t("btn_edit") }) };
     case 3: return { done: videos > 0, el: $('btn-up'), text: t('tut_3') };
     case 4: return { el: $('stats'), text: t('tut_4'), ok: true };
     case 5: {
-      if (S.job.shifts > 0 || gearSum > 0 || L.channel(S).monetized) return { done: true };
-      if (S.job.active) return { wait: true };
-      return { el: $('jobBtn'), text: t('tut_5') };
+      if (!S.job.employed) return { done: true };
+      return { el: $('job'), text: t('tut_5'), ok: true };
     }
     case 6: {
       var cg = cheapestGear();
@@ -508,7 +596,7 @@ function tutStep() {
   }
 }
 function renderTip() {
-  if (!S.channels.length || !$('pickBox').hidden || !$('menuBox').hidden || !$('winBox').hidden || !$('evBox').hidden) { hideTip(); return; }
+  if (!S.channels.length || ['pickBox', 'menuBox', 'winBox', 'evBox', 'quitBox', 'vidsBox', 'moveBox'].some(function (id) { return !$(id).hidden; })) { hideTip(); return; }
   var step = tutStep(), guard = 0;
   while (step && step.done && guard++ < 12) { S.tut++; step = tutStep(); }
   if (!step || step.wait || !step.el) { hideTip(); return; }
@@ -542,13 +630,20 @@ window.addEventListener('resize', function () { resize(); renderTip(); });
 var last = performance.now(), uiTimer = 0, saveTimer = 0, chTimer = 0;
 function frame(ts) {
   var dt = Math.min(0.25, (ts - last) / 1000); last = ts; now += dt;
-  handle(L.tick(S, dt, Math.random));
+  if ($('moveBox').hidden) handle(L.tick(S, dt, Math.random)); else updateMove();
+  if (S.event && !$('evBox').hidden) updateEventButtons();
   uiTimer += dt; saveTimer += dt; chTimer += dt;
   if (uiTimer > 0.15) { uiTimer = 0; renderAll(); }
-  if (chTimer > 2 && shopTab === 'channel') { chTimer = 0; renderChannelPage(); }
+  if (chTimer > 2 && shopTab === 'channel' && $('vidsBox').hidden) { chTimer = 0; renderChannelPage(); }
   if (saveTimer > 5) { saveTimer = 0; save(); }
+  var selfRec = now - lastClick.rec < 0.6, selfEdit = now - lastClick.edit < 0.6, selfUp = now - lastClick.up < 0.6;
+  var lastSelf = Math.max(lastClick.rec, lastClick.edit, lastClick.up);
   window.Room.draw(ctx, S, L, now, {
-    recording: !S.job.active && (now - lastClick.rec < 0.5 || S.staff.op > 0),
+    selfDesk: (selfEdit || selfUp) && lastClick.rec < lastSelf,
+    recording: !S.job.active && (selfRec || S.staff.op > 0),
+    editing: !S.job.active && (selfEdit || (S.staff.ed > 0 && S.raw.length > 0)),
+    uploading: !S.job.active && (selfUp || (S.staff.mg > 0 && S.edited.length > 0)),
+    edOnline: S.staff.ed > 0, upProgress: S.work.up / L.workNeed(S, 'up'), sinceUpload: now - lastPublish,
     atJob: S.job.active, jobLabel: settings.lang === 'ru' ? 'Ушёл на работу' : 'At work'
   });
   requestAnimationFrame(frame);

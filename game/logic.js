@@ -6,13 +6,14 @@
   var GOAL_SUBS = 1000000;          // цель: столько подписчиков на любом канале
   var SECOND_CHANNEL_AT = 50000;    // столько подписчиков на первом канале нужно для второго
   var MONETIZE_AT = 1000;           // с этого числа подписчиков канал начинает зарабатывать
-  var SUB_RATE = 0.012;             // подписчиков с одного просмотра
-  var MONEY_RATE = 0.01;            // денег с одного просмотра (если монетизация включена)
+  var SUB_RATE = 0.004;             // подписчиков с одного просмотра
+  var VIEW_BASE = 900;              // базовые просмотры нового видео (до множителей)
   var STRIKE_TIME = 240;            // сколько секунд действует страйк
   var MAX_STRIKES = 3;              // при стольких страйках загрузка блокируется
   var HOUR = 3.75;                  // секунд реального времени в одном игровом часе
   var SHIFT_HOURS = 8;              // длина смены на работе (игровые часы)
-  var START_HOUR = 9;               // игра начинается в 9 утра
+  var START_HOUR = 18;              // игра начинается вечером первого дня
+  var JOB_FROM = 9, JOB_TO = 17;    // обязательная смена на работе
   var MAX_COMMENTS = 30;            // сколько неотвеченных комментариев хранится
   var MAX_VIDEOS = 300;             // сколько последних видео хранится в списке канала
   var MG_AUTO_COMMENTS = 5;         // с этого уровня менеджер сам отвечает на комментарии
@@ -20,20 +21,28 @@
 
   var WORK = { rec: 10, edit: 12, up: 6 };
 
-  // Тематики канала: множители просмотров, денег, залётов, жалоб, спонсоров, пассивных просмотров и сложности этапов
+  // Тематики канала: RPM (доход в $ за 1000 просмотров), множители просмотров, залётов, жалоб, спонсоров, пассивных просмотров и сложности этапов
   var THEMES = {
-    games:     { views: 1.2,  money: 0.8,  viral: 1.0, strike: 1.0, sponsor: 0.9, passive: 1.0, hate: 1.3, work: { rec: 0.8, edit: 1.2, up: 1 } },
-    cooking:   { views: 0.9,  money: 1.2,  viral: 0.8, strike: 0.4, sponsor: 1.3, passive: 1.2, hate: 0.6, work: { rec: 1.3, edit: 0.9, up: 1 } },
-    pranks:    { views: 1.15, money: 0.9,  viral: 2.2, strike: 2.4, sponsor: 0.8, passive: 0.8, hate: 1.6, work: { rec: 1.0, edit: 0.8, up: 1 } },
-    tech:      { views: 0.85, money: 1.4,  viral: 0.7, strike: 0.6, sponsor: 1.7, passive: 1.1, hate: 1.0, work: { rec: 1.0, edit: 1.1, up: 1 }, gearDiscount: 0.15 },
-    truecrime: { views: 1.15, money: 1.1,  viral: 1.2, strike: 1.7, sponsor: 0.9, passive: 1.4, hate: 1.1, work: { rec: 0.7, edit: 1.5, up: 1 } },
-    vlog:      { views: 1.0,  money: 1.0,  viral: 1.0, strike: 0.7, sponsor: 1.1, passive: 0.9, hate: 0.9, work: { rec: 0.8, edit: 0.8, up: 1 }, fans: 2 },
-    music:     { views: 1.0,  money: 0.9,  viral: 1.5, strike: 1.9, sponsor: 1.0, passive: 1.5, hate: 1.0, work: { rec: 1.4, edit: 1.0, up: 1 } },
-    science:   { views: 0.9,  money: 1.2,  viral: 1.1, strike: 0.5, sponsor: 1.2, passive: 1.3, hate: 0.7, work: { rec: 1.2, edit: 1.1, up: 1 } },
-    fitness:   { views: 0.95, money: 1.25, viral: 0.9, strike: 0.7, sponsor: 1.5, passive: 1.0, hate: 1.1, work: { rec: 1.1, edit: 0.9, up: 1 } },
-    asmr:      { views: 0.9,  money: 1.0,  viral: 0.8, strike: 0.4, sponsor: 1.0, passive: 1.7, hate: 0.8, work: { rec: 0.9, edit: 1.0, up: 1 }, fans: 1.5 }
+    games:     { rpm: 2.0, views: 1.2,  money: 0.8,  viral: 1.0, strike: 1.0, sponsor: 0.9, passive: 1.0, hate: 1.3, work: { rec: 0.8, edit: 1.2, up: 1 } },
+    cooking:   { rpm: 4.0, views: 0.9,  money: 1.2,  viral: 0.8, strike: 0.4, sponsor: 1.3, passive: 1.2, hate: 0.6, work: { rec: 1.3, edit: 0.9, up: 1 } },
+    pranks:    { rpm: 2.5, views: 1.15, money: 0.9,  viral: 2.2, strike: 2.4, sponsor: 0.8, passive: 0.8, hate: 1.6, work: { rec: 1.0, edit: 0.8, up: 1 } },
+    tech:      { rpm: 6.0, views: 0.85, money: 1.4,  viral: 0.7, strike: 0.6, sponsor: 1.7, passive: 1.1, hate: 1.0, work: { rec: 1.0, edit: 1.1, up: 1 }, gearDiscount: 0.15 },
+    truecrime: { rpm: 5.0, views: 1.15, money: 1.1,  viral: 1.2, strike: 1.7, sponsor: 0.9, passive: 1.4, hate: 1.1, work: { rec: 0.7, edit: 1.5, up: 1 } },
+    vlog:      { rpm: 3.0, views: 1.0,  money: 1.0,  viral: 1.0, strike: 0.7, sponsor: 1.1, passive: 0.9, hate: 0.9, work: { rec: 0.8, edit: 0.8, up: 1 }, fans: 2 },
+    music:     { rpm: 1.6, views: 1.0,  money: 0.9,  viral: 1.5, strike: 1.9, sponsor: 1.0, passive: 1.5, hate: 1.0, work: { rec: 1.4, edit: 1.0, up: 1 } },
+    science:   { rpm: 5.0, views: 0.9,  money: 1.2,  viral: 1.1, strike: 0.5, sponsor: 1.2, passive: 1.3, hate: 0.7, work: { rec: 1.2, edit: 1.1, up: 1 } },
+    fitness:   { rpm: 4.5, views: 0.95, money: 1.25, viral: 0.9, strike: 0.7, sponsor: 1.5, passive: 1.0, hate: 1.1, work: { rec: 1.1, edit: 0.9, up: 1 } },
+    asmr:      { rpm: 2.5, views: 0.9,  money: 1.0,  viral: 0.8, strike: 0.4, sponsor: 1.0, passive: 1.7, hate: 0.8, work: { rec: 0.9, edit: 1.0, up: 1 }, fans: 1.5 }
   };
   var THEME_IDS = Object.keys(THEMES);
+
+  // Форматы видео: сложность работы, просмотры, подписчики, доход за 1000 просмотров, длина в минутах
+  var FORMATS = {
+    short: { work: 0.45, views: 1.7, subs: 0.6, rpm: 0.06, len: [0.4, 0.9] },
+    video: { work: 1.0, views: 1.0, subs: 1.0, rpm: 1.0, len: [8, 15] },
+    long:  { work: 2.2, views: 0.85, subs: 1.35, rpm: 1.6, len: [25, 45] }
+  };
+  var FORMAT_IDS = ['short', 'video', 'long'];
 
   // Жильё: даёт бонус к качеству и открывает технику выше уровнем (ступень техники N требует жильё N−1)
   var HOMES = [
@@ -76,15 +85,16 @@
 
   var MILESTONES = [100, 1000, 10000, 100000, 1000000];
 
-  function newChannel(theme) {
-    return { theme: theme, subs: 0, views: 0, likes: 0, catalog: 0, catalogMon: 0, videos: 0, monetized: false };
+  function newChannel(theme, name, style) {
+    return { theme: theme, name: name || '', style: style || 0, subs: 0, views: 0, likes: 0, earned: 0, catalog: 0, catalogRev: 0, videos: 0, monetized: false };
   }
 
   function newState() {
     return {
-      v: 3,
+      v: 4,
       money: 0, trust: 70,
-      raw: 0, edited: 0,
+      raw: [], edited: [],          // очереди: формат каждого отснятого и смонтированного видео
+      format: 'video',
       work: { rec: 0, edit: 0, up: 0 },
       gear: { cam: 0, pc: 0, net: 0, mic: 0, light: 0 },
       home: 0,
@@ -94,7 +104,7 @@
       comments: [], nextCid: 1, replied: 0,
       effects: [],
       event: null, nextEventAt: 0,
-      job: { active: false, end: 0, shifts: 0 },
+      job: { employed: true, active: false, end: 0, shifts: 0, lastDay: 0 },
       milestones: [],
       played: 0,
       won: false, wonAt: 0,
@@ -111,12 +121,12 @@
     var h = START_HOUR + s.played / HOUR;
     return { day: 1 + Math.floor(h / 24), hour: Math.floor(h % 24), minute: Math.floor((h % 1) * 60), frac: (h % 24) / 24 };
   }
-  function salary(s) { return 40 + 5 * Math.min(s.job.shifts, 12); }
+  function salary(s) { return 60 + 10 * Math.min(s.job.shifts, 10); }
 
-  function startChannel(s, themeId) {
+  function startChannel(s, themeId, name, style) {
     if (!THEMES[themeId] || s.channels.length >= 2) return false;
     if (s.channels.length === 1 && (!canOpenSecond(s) || s.channels[0].theme === themeId)) return false;
-    s.channels.push(newChannel(themeId));
+    s.channels.push(newChannel(themeId, String(name || '').slice(0, 30), style | 0));
     s.active = s.channels.length - 1;
     if (!s.nextEventAt) s.nextEventAt = s.played + 70;
     return true;
@@ -141,13 +151,17 @@
     if (stage === 'edit') return GEAR.pc[s.gear.pc].power;
     return GEAR.net[s.gear.net].power;
   }
-  function workNeed(s, stage) { return WORK[stage] * (s.channels.length ? theme(s).work[stage] : 1); }
+  function itemFormat(s, stage) { return stage === 'rec' ? s.format : stage === 'edit' ? s.raw[0] : s.edited[0]; }
+  function workNeed(s, stage) {
+    var f = FORMATS[itemFormat(s, stage) || s.format];
+    return WORK[stage] * (s.channels.length ? theme(s).work[stage] : 1) * f.work;
+  }
 
   // Может ли работа над этапом идти вообще (сотрудники работают и во время смены игрока)
   function stageOpen(s, stage) {
     if (!s.channels.length) return false;
-    if (stage === 'edit') return s.raw > 0;
-    if (stage === 'up') return s.edited > 0 && strikes(s) < MAX_STRIKES;
+    if (stage === 'edit') return s.raw.length > 0;
+    if (stage === 'up') return s.edited.length > 0 && strikes(s) < MAX_STRIKES;
     return true;
   }
   // Может ли игрок нажимать сам
@@ -160,37 +174,60 @@
       var need = workNeed(s, stage), room = need - s.work[stage];
       if (amount < room) { s.work[stage] += amount; amount = 0; break; }
       amount -= room; s.work[stage] = 0;
-      if (stage === 'rec') { s.raw++; events.push({ type: 'recorded' }); }
-      else if (stage === 'edit') { s.raw--; s.edited++; events.push({ type: 'edited' }); }
-      else { s.edited--; publish(s, rng, events); }
+      if (stage === 'rec') { s.raw.push(s.format); events.push({ type: 'recorded' }); }
+      else if (stage === 'edit') { s.edited.push(s.raw.shift()); events.push({ type: 'edited' }); }
+      else publish(s, s.edited.shift(), rng, events);
     }
     return events;
   }
 
   /* ---------- Видео ---------- */
-  function publish(s, rng, events) {
-    var ch = channel(s), th = theme(s), q = quality(s);
-    var mult = th.views * trustMul(s) * Math.pow(0.75, strikes(s));
-    var viralChance = 0.04 * th.viral, boost = null;
+  function publish(s, fmtId, rng, events) {
+    var ch = channel(s), th = theme(s), q = quality(s), f = FORMATS[fmtId] || FORMATS.video;
+    var mult = th.views * f.views * trustMul(s) * Math.pow(0.75, strikes(s));
+    var viralChance = 0.04 * th.viral * (fmtId === 'short' ? 1.5 : 1), boost = null;
     for (var i = 0; i < s.effects.length; i++) if (s.effects[i].type === 'boost' && s.effects[i].ch === s.active) { boost = s.effects[i]; break; }
     if (boost) { mult *= boost.mult; viralChance *= boost.viral || 1; }
     var viral = rng() < viralChance;
-    var views = Math.floor((300 + 2 * Math.sqrt(ch.subs)) * q * mult * (0.7 + 0.6 * rng()) * (viral ? 6 + rng() * 6 : 1));
-    var subs = views * SUB_RATE + (boost && boost.subs || 0);
-    var money = ch.monetized ? views * MONEY_RATE * th.money : 0;
+    var luck = (0.7 + 0.6 * rng()) * (viral ? 6 + rng() * 6 : 1) * (boost ? boost.mult : 1);
+    var views = Math.floor((VIEW_BASE + 6 * Math.sqrt(ch.subs)) * q * mult * luck / (boost ? boost.mult : 1));
+    var subs = views * SUB_RATE * f.subs + (boost && boost.subs || 0);
+    var rpm = Math.round(th.rpm * f.rpm * (0.85 + 0.3 * rng()) * 100) / 100;
+    var money = ch.monetized ? views / 1000 * rpm : 0;
     if (boost) s.effects.splice(s.effects.indexOf(boost), 1);
-    var v = { id: s.nextVid++, ch: s.active, n: ch.videos, launch: views, t: s.played, mon: true, viral: viral, src: boost ? boost.src : null, cut: false };
+    var len = f.len[0] + (f.len[1] - f.len[0]) * rng();
+    var v = {
+      id: s.nextVid++, ch: s.active, n: ch.videos, fmt: fmtId, len: Math.round(len * 60), rpm: rpm,
+      tt: titleSeed(s, rng),
+      launch: views, t: s.played, mon: true, paid: ch.monetized, viral: viral, src: boost ? boost.src : null, cut: false,
+      perf: Math.round(luck * 100), earned: money, cm: 0
+    };
     s.videos.push(v);
     if (s.videos.length > MAX_VIDEOS) s.videos.shift();
-    ch.videos++; ch.catalog += views; ch.catalogMon += views;
-    ch.views += views; ch.subs += subs; ch.likes += views * likeRate(s); s.money += money;
+    ch.videos++; ch.catalog += views; ch.catalogRev += views * rpm;
+    ch.views += views; ch.subs += subs; ch.likes += views * likeRate(s); ch.earned += money; s.money += money;
     if (viral) addTrust(s, 1);
-    // комментарии под новым видео
     var n = 1 + (rng() < 0.5 ? 1 : 0) + (viral ? 2 : 0);
     for (var c = 0; c < n; c++) addComment(s, v, rng, events);
     events.push({ type: 'published', video: v, views: views, subs: subs, money: money, viral: viral, boost: v.src });
   }
+  // Случайные числа для названия; шаблон не повторяет предыдущее видео канала (у каждой темы 6 шаблонов)
+  function titleSeed(s, rng) {
+    var tt = [Math.floor(rng() * 1000), Math.floor(rng() * 1000), Math.floor(rng() * 1000), Math.floor(rng() * 1000)];
+    for (var i = s.videos.length - 1; i >= 0; i--) if (s.videos[i].ch === s.active) {
+      if (s.videos[i].tt && s.videos[i].tt[0] % 6 === tt[0] % 6) tt[0] += 1 + Math.floor(rng() * 5);
+      break;
+    }
+    return tt;
+  }
   function likeRate(s) { return 0.02 + 0.04 * s.trust / 100; }
+  function dislikeRate(s) { return 0.001 + 0.012 * (1 - s.trust / 100); }
+  // Сколько денег принесло видео (стартовые + со временем, если канал монетизирован)
+  function videoEarned(s, v) {
+    if (!v.mon) return v.earned || 0;
+    var extra = s.channels[v.ch].monetized ? (videoViews(s, v) - v.launch) / 1000 * v.rpm : 0;
+    return (v.earned || 0) + extra;
+  }
   // Сколько просмотров у видео сейчас (стартовые + набранные со временем)
   function videoViews(s, v) {
     var th = THEMES[s.channels[v.ch].theme];
@@ -205,6 +242,7 @@
     var r = rng() * (wHate + wPos + wQ);
     var kind = r < wPos ? 'pos' : r < wPos + wQ ? 'q' : 'hate';
     var c = { id: s.nextCid++, vid: v.id, ch: v.ch, kind: kind, pick: Math.floor(rng() * 1000), t: s.played };
+    v.cm = (v.cm || 0) + 1;
     if (s.staff.mg >= MG_AUTO_COMMENTS) {
       var res = replyEffect(s, c, 'pos');
       events.push({ type: 'auto_reply', comment: c, result: res });
@@ -235,11 +273,13 @@
   function staffRate(s, kind) { return s.staff[kind] * 0.6 * Math.sqrt(power(s, STAFF[kind].stage)); }
 
   /* ---------- Работа ---------- */
-  function startShift(s) {
-    if (s.job.active || s.event || !s.channels.length) return false;
-    s.job.active = true; s.job.end = s.played + SHIFT_HOURS * HOUR;
+  // Уволиться можно один раз и навсегда. Если ты сейчас на смене, смена прерывается без зарплаты.
+  function quitJob(s) {
+    if (!s.job.employed) return false;
+    s.job.employed = false; s.job.active = false;
     return true;
   }
+  function setFormat(s, f) { if (FORMATS[f]) { s.format = f; return true; } return false; }
 
   /* ---------- События (на весь экран, игра на паузе) ---------- */
   var NAMES = ['Max Pixel', 'Лиза Лайк', 'DJ Борщ', 'Kira Plays', 'Саня Влог', 'Mr. Tofu', 'Ника Бьюти', 'Tony Byte', 'Шеф Гоша', 'Луна ASMR', 'Doc Science', 'Fit Masha'];
@@ -307,17 +347,17 @@
       case 'sponsor:decline': addTrust(s, 2); break;
       case 'strike:cut': {
         var v = findVideo(s, ev.vid);
-        if (v) { var lost = Math.floor(v.launch * 0.2); v.launch -= lost; v.cut = true; ch.catalog -= lost; if (v.mon) ch.catalogMon -= lost; }
+        if (v) { var lost = Math.floor(v.launch * 0.2); v.launch -= lost; v.cut = true; ch.catalog -= lost; if (v.mon) ch.catalogRev -= lost * v.rpm; }
         break;
       }
       case 'strike:demonetize': {
         var v2 = findVideo(s, ev.vid);
-        if (v2 && v2.mon) { v2.mon = false; ch.catalogMon -= v2.launch; }
+        if (v2 && v2.mon) { v2.earned = videoEarned(s, v2); v2.mon = false; ch.catalogRev -= v2.launch * v2.rpm; }
         break;
       }
       case 'strike:delete': {
         var v3 = findVideo(s, ev.vid);
-        if (v3) { ch.catalog -= v3.launch; if (v3.mon) ch.catalogMon -= v3.launch; s.videos.splice(s.videos.indexOf(v3), 1); s.comments = s.comments.filter(function (c) { return c.vid !== v3.id; }); }
+        if (v3) { ch.catalog -= v3.launch; if (v3.mon) ch.catalogRev -= v3.launch * v3.rpm; s.videos.splice(s.videos.indexOf(v3), 1); s.comments = s.comments.filter(function (c) { return c.vid !== v3.id; }); }
         break;
       }
       case 'strike:ignore': s.effects.push({ type: 'strike', ch: ev.ch, until: s.played + STRIKE_TIME }); break;
@@ -357,7 +397,7 @@
       var pv = ch.catalog * rate;
       if (pv > 0) {
         ch.views += pv; ch.subs += pv * SUB_RATE * 0.3; ch.likes += pv * likeRate(s) * 0.3;
-        if (ch.monetized) s.money += ch.catalogMon * rate * MONEY_RATE * THEMES[ch.theme].money;
+        if (ch.monetized) { var earn = ch.catalogRev * rate / 1000; s.money += earn; ch.earned += earn; }
       }
       if (!ch.monetized && ch.subs >= MONETIZE_AT) {
         ch.monetized = true;
@@ -368,6 +408,13 @@
     for (var e = s.effects.length - 1; e >= 0; e--) {
       var ef = s.effects[e];
       if (ef.until && ef.until <= s.played) { s.effects.splice(e, 1); events.push({ type: 'effect_end', effect: ef.type }); }
+    }
+    // обязательная смена: пока ты устроен, каждый день с 9 до 17 ты на работе
+    var c = clock(s);
+    if (s.job.employed && !s.job.active && c.day !== s.job.lastDay && c.hour >= JOB_FROM && c.hour < JOB_TO) {
+      s.job.active = true; s.job.lastDay = c.day;
+      s.job.end = s.played + (JOB_TO - c.hour - c.minute / 60) * HOUR;
+      events.push({ type: 'shift_start' });
     }
     if (s.job.active && s.played >= s.job.end) {
       s.job.active = false; var pay = salary(s); s.money += pay; s.job.shifts++;
@@ -411,7 +458,7 @@
 
   function restore(data) {
     var s = newState();
-    if (!data || typeof data !== 'object' || data.v !== 3) return s;
+    if (!data || typeof data !== 'object' || data.v !== 4) return s;
     for (var k in s) {
       if (!(k in data)) continue;
       if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k])) {
@@ -425,6 +472,7 @@
   }
 
   var api = {
+    FORMATS: FORMATS, FORMAT_IDS: FORMAT_IDS, JOB_FROM: JOB_FROM, JOB_TO: JOB_TO,
     GOAL_SUBS: GOAL_SUBS, SECOND_CHANNEL_AT: SECOND_CHANNEL_AT, MONETIZE_AT: MONETIZE_AT, MAX_STRIKES: MAX_STRIKES,
     STRIKE_TIME: STRIKE_TIME, HOUR: HOUR, SHIFT_HOURS: SHIFT_HOURS, MG_AUTO_COMMENTS: MG_AUTO_COMMENTS, MG_AUTO_EVENTS: MG_AUTO_EVENTS,
     WORK: WORK, THEMES: THEMES, THEME_IDS: THEME_IDS, HOMES: HOMES, GEAR: GEAR, GEAR_IDS: GEAR_IDS, STAFF: STAFF, MILESTONES: MILESTONES,
@@ -432,7 +480,7 @@
     channel: channel, theme: theme, bestSubs: bestSubs, totalVideos: totalVideos, clock: clock, salary: salary,
     quality: quality, power: power, workNeed: workNeed, stageOpen: stageOpen, canWork: canWork, trustMul: trustMul,
     strikes: strikes, strikesOn: strikesOn, broken: broken, videoViews: videoViews, likeRate: likeRate, findVideo: findVideo,
-    addWork: addWork, tick: tick, staffRate: staffRate, passiveRate: passiveRate, startShift: startShift,
+    addWork: addWork, tick: tick, staffRate: staffRate, passiveRate: passiveRate, quitJob: quitJob, setFormat: setFormat, itemFormat: itemFormat, videoEarned: videoEarned, dislikeRate: dislikeRate,
     replyComment: replyComment, eventOptions: eventOptions, canChoose: canChoose, resolveEvent: resolveEvent,
     gearCost: gearCost, gearBlocked: gearBlocked, gearNeedsHome: gearNeedsHome, buyGear: buyGear,
     homeCost: homeCost, moveHome: moveHome, staffCost: staffCost, hire: hire

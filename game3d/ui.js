@@ -295,6 +295,7 @@ $('cv').addEventListener('mousedown', function (e) {
   A.unlock();
   if (!slot || paused() || anyModal()) return;
   if (!window.World.isLocked()) { window.World.lock(); hide('clickPlay'); return; }
+  if (e.button !== 0) return;
   if (e.button === 0) { holding = true; holdTimer = 0; act(); }
 });
 document.addEventListener('mouseup', function () { holding = false; });

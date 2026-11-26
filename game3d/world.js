@@ -13,7 +13,8 @@
   var sun, hemi, moon, ceilLamp, deskLamp, monitorLight, studioL, studioR;
   var SPAWN = { x: 3.4, z: 6.1, yaw: -1.08, pitch: -0.1 };   // у двери, лицом к камере
   var player = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw, pitch: SPAWN.pitch, vx: 0, vz: 0 };
-  var keys = {}, locked = false, sens = 1, hovered = null, interactables = [];
+  var keys = {}, locked = false, freeLook = false, sens = 1, hovered = null, interactables = [];
+  // freeLook — запасной режим, если браузер не дал захватить мышь: смотрим, просто двигая мышь над игрой
 
   /* ---------- Материалы и текстуры ---------- */
   function mat(color, opts) {
@@ -394,6 +395,7 @@
       var fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
       var side = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
       var speed = (keys.ShiftLeft || keys.ShiftRight ? 4.2 : 2.6) * dt;
+      player.yaw += ((keys.KeyQ ? 1 : 0) - (keys.KeyE ? 1 : 0)) * 2.2 * dt;
       var len = Math.hypot(fwd, side) || 1;
       var sx = -Math.sin(player.yaw), sz = -Math.cos(player.yaw), rx = Math.cos(player.yaw), rz = -Math.sin(player.yaw);
       var mx = (sx * fwd + rx * side) / len * speed, mz = (sz * fwd + rz * side) / len * speed;
@@ -441,9 +443,10 @@
     document.addEventListener('keydown', function (e) { keys[e.code] = true; });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
     window.addEventListener('blur', function () { keys = {}; });
-    document.addEventListener('pointerlockchange', function () { locked = document.pointerLockElement === canvasEl; if (!locked) keys = {}; });
+    document.addEventListener('pointerlockchange', function () { locked = document.pointerLockElement === canvasEl; if (locked) freeLook = false; if (!locked && !freeLook) keys = {}; });
+    document.addEventListener('pointerlockerror', function () { freeLook = true; });
     document.addEventListener('mousemove', function (e) {
-      if (!locked) return;
+      if (!locked && !(freeLook && e.target === canvasEl)) return;
       if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return;   // браузер иногда присылает огромный рывок при захвате мыши
       player.yaw -= e.movementX * 0.0022 * sens;
       player.pitch = Math.max(-1.35, Math.min(1.35, player.pitch - e.movementY * 0.0022 * sens));
@@ -453,9 +456,13 @@
 
   window.World = {
     init: init, update: update, resize: resize,
-    lock: function () { try { var p = canvasEl.requestPointerLock(); if (p && p.catch) p.catch(function () {}); } catch (e) {} },
-    unlock: function () { if (document.pointerLockElement) document.exitPointerLock(); },
-    isLocked: function () { return locked; },
+    lock: function () {
+      try { var p = canvasEl.requestPointerLock(); if (p && p.catch) p.catch(function () { freeLook = true; }); } catch (e) { freeLook = true; }
+      setTimeout(function () { if (!locked) freeLook = true; }, 400);   // не дали захватить мышь — включаем запасной режим
+    },
+    unlock: function () { freeLook = false; if (document.pointerLockElement) document.exitPointerLock(); },
+    isLocked: function () { return locked || freeLook; },
+    isFreeLook: function () { return freeLook && !locked; },
     hovered: function () { return hovered; },
     setSensitivity: function (v) { sens = v; },
     resetPlayer: function () { player.x = SPAWN.x; player.z = SPAWN.z; player.yaw = SPAWN.yaw; player.pitch = SPAWN.pitch; },
